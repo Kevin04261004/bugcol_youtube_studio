@@ -5,6 +5,7 @@ class Bucket{
  map=new Map();seq=0;
  async put(key,value,opts={}){const old=this.map.get(key),c=opts.onlyIf||{};if(c.etagMatches&&old?.etag!==c.etagMatches||c.etagDoesNotMatch==='*'&&old)return null;const bytes=typeof value==='string'?new TextEncoder().encode(value):value;const o={key,bytes:new Uint8Array(bytes),etag:'version'+(++this.seq),customMetadata:opts.customMetadata,uploaded:new Date()};this.map.set(key,o);return o;}
  async head(key){return this.map.get(key)||null;}
+ async delete(key){this.map.delete(key);}
  async get(key){const o=this.map.get(key);return o?{...o,body:o.bytes,json:async()=>JSON.parse(new TextDecoder().decode(o.bytes))}:null;}
  async list({prefix}){return{objects:[...this.map.values()].filter(o=>o.key.startsWith(prefix)),truncated:false};}
 }
@@ -26,8 +27,16 @@ assert.equal((await call('/api/folders/'+id,'PUT',doc,'alice',{'If-Match':first.
 assert.equal((await call('/api/folders/'+id,'PUT',doc,'alice',{'If-None-Match':'*'})).status,409);
 assert.equal((await(await call('/api/folders')).json()).folders.length,1);
 assert.equal((await(await call('/api/folders','GET',null,'bob')).json()).folders.length,0);
+assert.equal((await call('/api/folders/'+id,'DELETE',null,'alice',{Origin:'https://evil.test'})).status,403);
+assert.equal((await call('/api/folders/'+id,'DELETE',null,'bob')).status,404);
+assert.equal((await(await call('/api/folders')).json()).folders.length,1);
+assert.equal((await call('/api/folders/'+id,'DELETE')).status,200);
+assert.equal((await call('/api/folders/'+id,'GET')).status,404);
+assert.equal((await call('/api/folders/'+id,'DELETE')).status,404);
+assert.equal((await(await call('/api/folders')).json()).folders.length,0);
+assert.equal((await call('/api/media/'+hash,'GET')).status,200);
 assert.deepEqual(planAudioImports([{name:'002.mp3'},{name:'001.wav'}],[{id:1},{id:2}],1).map(p=>p.id),[2,1]);
 assert.equal(planAudioImports([{name:'voice.m4a'}],[{id:7}],7)[0].id,7);
 assert.throws(()=>planAudioImports([{name:'001.mp3'},{name:'001.wav'}]));
 assert.throws(()=>planAudioImports([{name:'010.mp3'}],[{id:1}],1));
-console.log('PASS authenticated folder/media round-trip, user isolation, CSRF, hash verification, save conflicts, audio filename mapping');
+console.log('PASS authenticated folder/media round-trip, user isolation, CSRF, hash verification, save conflicts, folder delete, audio filename mapping');

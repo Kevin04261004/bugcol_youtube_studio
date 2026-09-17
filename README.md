@@ -42,6 +42,7 @@ npm run build
 - 장면 파일 가져오기, 검수 후 WebCodecs H.264/AAC MP4 렌더링
 - IndexedDB 로컬 저장, 프로젝트 ZIP 백업과 복원
 - 로그인 계정별 서버 작업 폴더와 자동 저장, 동시 수정 충돌 방지
+- 작업 폴더 관리: 지금 작업을 새 폴더로 올리기, 다른 폴더 열기, 이름 바꾸기, 삭제, 빈 프로젝트로 시작
 
 실제 마이크 및 MP4 코덱 지원은 브라우저/기기에 따라 다릅니다. 테스트는 DOM 상호작용, 오디오 타임라인, 서버 권한·저장·충돌 처리를 검사하며 실제 하드웨어 녹음과 인코딩을 대체하지 않습니다.
 
@@ -71,7 +72,7 @@ git add dist && git commit -m "문구 수정" && git push
 
 ### 서버를 고칠 때 — ChatGPT에 한 번 요청
 
-`server/worker.js`(로그인·저장 API)를 고쳤을 때만 ChatGPT Sites에 배포를 요청해야 합니다. ChatGPT Sites는 채팅 밖에서 배포할 방법을 제공하지 않습니다(배포용 API·CLI·GitHub 연동 없음). 배포 전에 `npm test`를 실행해 `dist/server/index.js`와 `dist/build-id.txt`를 함께 커밋하세요.
+`server/worker.js`(로그인·저장 API)를 고쳤을 때만 ChatGPT Sites에 배포를 요청해야 합니다. 배포가 아직 안 된 서버에서는 편집기가 `/api/version` 응답으로 기능 유무를 확인해, 쓸 수 없는 기능(예: 폴더 삭제)의 버튼을 아예 내보내지 않습니다. ChatGPT Sites는 채팅 밖에서 배포할 방법을 제공하지 않습니다(배포용 API·CLI·GitHub 연동 없음). 배포 전에 `npm test`를 실행해 `dist/server/index.js`와 `dist/build-id.txt`를 함께 커밋하세요.
 
 임시로 저장소를 읽지 않고 내장 사본만 쓰려면 Worker 환경 변수 `LIVE_SOURCE`를 `off`로 두고, 다른 저장소·브랜치를 보게 하려면 해당 raw 주소를 넣습니다. 값이 없으면 `live` 브랜치를 읽습니다.
 
@@ -80,6 +81,8 @@ git add dist && git commit -m "문구 수정" && git push
 현재 운영 사이트: https://burcol-longform-studio.kdystudy0426.chatgpt.site
 
 서버는 Sites가 검증해서 전달하는 사용자 인증 헤더와 `BUCKET` R2 바인딩을 사용합니다. 다른 호스팅으로 이전하려면 인증 검증 계층과 저장소를 함께 구현해야 합니다. 현재 Worker를 외부에서 임의 인증 헤더를 받을 수 있는 상태로 공개하면 안 됩니다. GitHub Pages만으로는 서버 폴더 기능을 실행할 수 없습니다. Sites 배포 정보는 `.openai/hosting.json`에 있습니다.
+
+폴더를 삭제해도 녹음·이미지 조각은 R2에 남습니다. 같은 내용은 해시로 공유되기 때문에, 함께 지우면 그 조각을 쓰는 다른 폴더가 깨집니다.
 
 개인 녹음·대본·이미지와 서버 작업 폴더 데이터는 이 공개 저장소에 포함하지 않았습니다. 기존 서비스에 유지됩니다. 사용자 작업을 옮길 때는 편집기의 프로젝트 ZIP 내보내기/가져오기를 사용하세요.
 

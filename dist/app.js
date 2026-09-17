@@ -87,6 +87,7 @@ $('batchAudioInput').onchange=async e=>{const files=[...e.target.files];e.target
 cloud=createCloudEditor({getProject:()=>project,isBusy:()=>busy||recording,setBusy,toast,
  persistLocal:()=>scheduleSave(true),updateName:name=>{$('projectName').value=name;},
  flushLocal:async()=>{scheduleSave(true);await new Promise(r=>setTimeout(r,500));await saveChain;},
- setProject:next=>{stopPlayback();clearMedia();project=next;selected=0;undo.clear();$('projectName').value=project.name;render();}
+ setProject:next=>{stopPlayback();clearMedia();project=next;selected=0;undo.clear();$('projectName').value=project.name;render();},
+ newProject:()=>{stopPlayback();clearMedia();project={version:1,name:'새로운 롱폼',sentences:[],assets:{}};selected=0;undo.clear();$('projectName').value=project.name;render();scheduleSave(true);}
 });
 await loadSaved();registerTools();cloud.init();

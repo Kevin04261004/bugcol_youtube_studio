@@ -38,6 +38,7 @@ export async function api(req,env){
  const folder=path.match(/^\/api\/folders\/([a-f0-9-]{36})$/);
  if(folder&&ID.test(folder[1])){const key=prefix+'folders/'+folder[1]+'.json';
   if(req.method==='GET'){const o=await bucket.get(key);if(!o)return json({error:'작업 폴더를 찾을 수 없습니다.'},404);return json({project:await o.json(),etag:o.etag});}
+  if(req.method==='DELETE'){if(!await bucket.head(key))return json({error:'작업 폴더를 찾을 수 없습니다.'},404);await bucket.delete(key);return json({deleted:true});}
   if(req.method==='PUT'){
    let doc;try{doc=JSON.parse(new TextDecoder().decode(await limitedBody(req,4*1024*1024)));}catch(e){if(e.status)throw e;throw fail(400,'작업 정보가 올바르지 않습니다.');}
    const refs=validateManifest(doc);
