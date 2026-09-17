@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -40,4 +40,15 @@ assert.equal(sceneEntrance('slide',0).alpha,1,'슬라이드는 투명해지지 �
 // easeOut 은 0..1 을 벗어나지 않는다
 assert.equal(easeOut(0),0);assert.equal(easeOut(1),1);
 assert.equal(easeOut(-3),0);assert.equal(easeOut(9),1);
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering');
+// 타임라인에서 고른 장면이 영상 어디쯤인지
+const lens=[2,3.5,1.25,4];
+assert.equal(offsetAt(lens,0),0,'첫 장면은 영상 시작점이다');
+assert.equal(offsetAt(lens,1),2);
+assert.equal(offsetAt(lens,3),6.75);
+assert.equal(offsetAt(lens,4),10.75,'마지막 다음은 전체 길이다');
+assert.equal(offsetAt(lens,99),10.75,'범위를 넘어도 전체 길이를 넘지 않는다');
+assert.equal(offsetAt(lens,-2),0,'음수는 시작점으로 본다');
+assert.equal(offsetAt([],0),0);
+assert.equal(offsetAt([undefined,2],2),2,'녹음이 없는 문장은 0초로 센다');
+
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets');

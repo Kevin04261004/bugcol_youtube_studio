@@ -39,4 +39,4 @@ export function sceneEntrance(motion,t,cover=COVER){const p=Math.min(1,Math.max(
  if(motion==='slide')return{alpha:1,shiftX:(1-easeOut(p,4))*1280,covers:p<1};
  return{alpha:easeOut(p),shiftX:0,covers:p<1};}
 export const needsScrim=(layout,hasMedia)=>!!hasMedia&&layout==='title';
-
+export const offsetAt=(durations,index)=>durations.slice(0,Math.max(0,index)).reduce((a,n)=>a+(n||0),0);
