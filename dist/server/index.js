@@ -4716,6 +4716,27 @@ export {
 var MAX_PART = 8 * 1024 * 1024;
 var HASH = /^[a-f0-9]{64}$/;
 var ID = /^[a-f0-9-]{36}$/;
+var LIVE_DEFAULT = "https://raw.githubusercontent.com/Kevin04261004/bugcol_youtube_studio/live/dist";
+var LIVE_PATH = /^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json|svg|png|jpe?g|webp|woff2|ico|map)$/i;
+var LIVE_TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", map: "application/json; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", woff2: "font/woff2", ico: "image/x-icon" };
+var BUNDLED = typeof define_STATIC_FILES_default === "object" ? define_STATIC_FILES_default : {};
+var BUILD = true ? "21e42ad291e8" : "dev";
+var liveBase = (env) => {
+  const base = env?.LIVE_SOURCE ?? LIVE_DEFAULT;
+  return base && base !== "off" ? base.replace(/\/$/, "") : null;
+};
+async function liveGet(env, path) {
+  const base = liveBase(env);
+  if (!base) return null;
+  try {
+    const r = await fetch(base + path, { signal: AbortSignal.timeout(2500), cf: { cacheTtl: 30, cacheEverything: true } });
+    if (!r.ok) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return bytes.length ? bytes : null;
+  } catch {
+    return null;
+  }
+}
 var json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers } });
 var fail = (status, message) => Object.assign(new Error(message), { status });
 async function digest(data) {
@@ -4774,6 +4795,10 @@ function validateManifest(doc) {
 async function api(req, env) {
   const u = new URL(req.url), path = u.pathname, uid = req.headers.get("oai-authenticated-user-id"), email = req.headers.get("oai-authenticated-user-email");
   if (path === "/api/session") return json({ user: uid && email ? { id: uid, email } : null });
+  if (path === "/api/version") {
+    const bytes = await liveGet(env, "/build-id.txt"), live = bytes ? new TextDecoder().decode(bytes).trim() : null;
+    return json({ bundled: BUILD, live, source: live && live !== BUILD ? "live" : "bundled" });
+  }
   if (!uid || !email) return json({ error: "\uC11C\uBC84 \uC791\uC5C5 \uD3F4\uB354\uB97C \uC0AC\uC6A9\uD558\uB824\uBA74 ChatGPT\uB85C \uB85C\uADF8\uC778\uD558\uC138\uC694." }, 401);
   if (!["GET", "HEAD"].includes(req.method) && req.headers.get("origin") !== u.origin) return json({ error: "\uAC19\uC740 \uC0AC\uC774\uD2B8\uC5D0\uC11C\uB9CC \uC800\uC7A5\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4." }, 403);
   if (!env.BUCKET) return json({ error: "\uC11C\uBC84 \uC800\uC7A5\uC18C\uB97C \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4. \uD604\uC7AC \uC791\uC5C5\uC740 \uAE30\uAE30\uC5D0 \uC720\uC9C0\uB429\uB2C8\uB2E4." }, 503);
@@ -4835,9 +4860,12 @@ var worker_default = { async fetch(req, env) {
   try {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) return await api(req, env);
-    const file = define_STATIC_FILES_default[url.pathname === "/" ? "/index.html" : url.pathname];
-    if (file) return new Response(req.method === "HEAD" ? null : file.body, { headers: { "Content-Type": file.type, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } });
-    return new Response("Not found", { status: 404 });
+    const path = url.pathname === "/" ? "/index.html" : url.pathname, bundled = BUNDLED[path];
+    if (!bundled && !LIVE_PATH.test(path)) return new Response("Not found", { status: 404 });
+    const live = await liveGet(env, path);
+    if (!live && !bundled) return new Response("Not found", { status: 404 });
+    const type = bundled ? bundled.type : LIVE_TYPES[path.split(".").pop().toLowerCase()];
+    return new Response(req.method === "HEAD" ? null : live ?? bundled.body, { headers: { "Content-Type": type, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "X-Studio-Source": live ? "live" : "bundled" } });
   } catch (e) {
     console.error("Storage request failed", e.message);
     return json({ error: e.status ? e.message : "\uC11C\uBC84 \uC800\uC7A5\uC744 \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uAE30\uAE30\uC758 \uC791\uC5C5\uC740 \uC720\uC9C0\uB429\uB2C8\uB2E4." }, e.status || 503);

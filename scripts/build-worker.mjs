@@ -1,8 +1,12 @@
 import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 const files={};
 for(const [path,type] of Object.entries({'index.html':'text/html; charset=utf-8','style.css':'text/css; charset=utf-8','app.js':'text/javascript; charset=utf-8','cloud.js':'text/javascript; charset=utf-8','core.js':'text/javascript; charset=utf-8','vendor/fflate.js':'text/javascript; charset=utf-8','vendor/mp4-muxer.js':'text/javascript; charset=utf-8'}))files['/'+path]={body:await fs.readFile('dist/'+path,'utf8'),type};
+const hash=createHash('sha256');for(const path of Object.keys(files).sort())hash.update(path+'\0'+files[path].body+'\0');
+const buildId=hash.digest('hex').slice(0,12);
 await fs.mkdir('dist/server',{recursive:true});await fs.mkdir('dist/.openai',{recursive:true});
-await build({entryPoints:['server/worker.js'],outfile:'dist/server/index.js',bundle:true,format:'esm',platform:'neutral',target:'es2022',define:{STATIC_FILES:JSON.stringify(files)}});
+await fs.writeFile('dist/build-id.txt',buildId+'\n');
+await build({entryPoints:['server/worker.js'],outfile:'dist/server/index.js',bundle:true,format:'esm',platform:'neutral',target:'es2022',define:{STATIC_FILES:JSON.stringify(files),BUILD_ID:JSON.stringify(buildId)}});
 await fs.copyFile('.openai/hosting.json','dist/.openai/hosting.json');
-console.log('Worker and authenticated cloud storage routes built');
+console.log('Worker and authenticated cloud storage routes built · build '+buildId);

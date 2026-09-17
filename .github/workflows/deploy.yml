@@ -1,0 +1,48 @@
+# main 에 push 하면 테스트를 돌리고, 통과한 커밋만 live 브랜치로 올립니다.
+# 운영 사이트의 Worker 는 live 브랜치의 dist 를 읽어 화면을 내보냅니다.
+name: 사이트 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: 테스트와 빌드
+        run: npm test
+
+      - name: 커밋된 빌드 결과가 최신인지 확인
+        run: |
+          if ! git diff --quiet -- dist/server/index.js dist/build-id.txt; then
+            echo "::warning::커밋된 dist/server/index.js 가 화면 파일보다 오래되었습니다. 배포는 그대로 진행하지만, 서버를 ChatGPT 로 다시 배포하기 전에 로컬에서 npm test 를 실행하고 dist 를 커밋해 주세요."
+          fi
+
+      - name: live 브랜치로 올리기
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A dist
+          git diff --cached --quiet || git commit -m "build: ${GITHUB_SHA::7} 빌드 결과"
+          git push --force origin HEAD:refs/heads/live
+          echo "### 배포 완료 · build \`$(cat dist/build-id.txt)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "30초 안에 사이트에 반영됩니다. 확인: <https://burcol-longform-studio.kdystudy0426.chatgpt.site/api/version>" >> "$GITHUB_STEP_SUMMARY"

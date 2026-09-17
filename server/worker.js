@@ -1,4 +1,10 @@
 const MAX_PART=8*1024*1024, HASH=/^[a-f0-9]{64}$/, ID=/^[a-f0-9-]{36}$/;
+const LIVE_DEFAULT='https://raw.githubusercontent.com/Kevin04261004/bugcol_youtube_studio/live/dist';
+const LIVE_PATH=/^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json|svg|png|jpe?g|webp|woff2|ico|map)$/i;
+const LIVE_TYPES={html:'text/html; charset=utf-8',css:'text/css; charset=utf-8',js:'text/javascript; charset=utf-8',json:'application/json; charset=utf-8',map:'application/json; charset=utf-8',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',woff2:'font/woff2',ico:'image/x-icon'};
+const BUNDLED=typeof STATIC_FILES==='object'?STATIC_FILES:{}, BUILD=typeof BUILD_ID==='string'?BUILD_ID:'dev';
+const liveBase=env=>{const base=env?.LIVE_SOURCE??LIVE_DEFAULT;return base&&base!=='off'?base.replace(/\/$/,''):null;};
+async function liveGet(env,path){const base=liveBase(env);if(!base)return null;try{const r=await fetch(base+path,{signal:AbortSignal.timeout(2500),cf:{cacheTtl:30,cacheEverything:true}});if(!r.ok)return null;const bytes=new Uint8Array(await r.arrayBuffer());return bytes.length?bytes:null;}catch{return null;}}
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...headers}});
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(b=>b.toString(16).padStart(2,'0')).join('');}
@@ -14,6 +20,7 @@ function validateManifest(doc){
 export async function api(req,env){
  const u=new URL(req.url),path=u.pathname,uid=req.headers.get('oai-authenticated-user-id'),email=req.headers.get('oai-authenticated-user-email');
  if(path==='/api/session')return json({user:uid&&email?{id:uid,email}:null});
+ if(path==='/api/version'){const bytes=await liveGet(env,'/build-id.txt'),live=bytes?new TextDecoder().decode(bytes).trim():null;return json({bundled:BUILD,live,source:live&&live!==BUILD?'live':'bundled'});}
  if(!uid||!email)return json({error:'서버 작업 폴더를 사용하려면 ChatGPT로 로그인하세요.'},401);
  if(!['GET','HEAD'].includes(req.method)&&req.headers.get('origin')!==u.origin)return json({error:'같은 사이트에서만 저장할 수 있습니다.'},403);
  if(!env.BUCKET)return json({error:'서버 저장소를 준비 중입니다. 현재 작업은 기기에 유지됩니다.'},503);
@@ -43,4 +50,4 @@ export async function api(req,env){
  }
  return json({error:'요청을 찾을 수 없습니다.'},404);
 }
-export default{async fetch(req,env){try{const url=new URL(req.url);if(url.pathname.startsWith('/api/'))return await api(req,env);const file=STATIC_FILES[url.pathname==='/'?'/index.html':url.pathname];if(file)return new Response(req.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.type,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});return new Response('Not found',{status:404});}catch(e){console.error('Storage request failed',e.message);return json({error:e.status?e.message:'서버 저장을 완료하지 못했습니다. 기기의 작업은 유지됩니다.'},e.status||503);}}};
+export default{async fetch(req,env){try{const url=new URL(req.url);if(url.pathname.startsWith('/api/'))return await api(req,env);const path=url.pathname==='/'?'/index.html':url.pathname,bundled=BUNDLED[path];if(!bundled&&!LIVE_PATH.test(path))return new Response('Not found',{status:404});const live=await liveGet(env,path);if(!live&&!bundled)return new Response('Not found',{status:404});const type=bundled?bundled.type:LIVE_TYPES[path.split('.').pop().toLowerCase()];return new Response(req.method==='HEAD'?null:(live??bundled.body),{headers:{'Content-Type':type,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','X-Studio-Source':live?'live':'bundled'}});}catch(e){console.error('Storage request failed',e.message);return json({error:e.status?e.message:'서버 저장을 완료하지 못했습니다. 기기의 작업은 유지됩니다.'},e.status||503);}}};
