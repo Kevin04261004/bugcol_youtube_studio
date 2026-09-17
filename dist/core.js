@@ -32,3 +32,11 @@ export function planAudioImports(files,sentences=[],selectedId=null,script=[]){
  const text=script.find(s=>s.id===id)?.text||base.replace(/\.[^.]+$/,'');return {file,id,text};
  });
 }
+export const COVER=.65;
+export const easeOut=(p,power=3)=>1-Math.pow(1-Math.min(1,Math.max(0,p)),power);
+export function sceneEntrance(motion,t,cover=COVER){const p=Math.min(1,Math.max(0,t)/cover);
+ if(motion==='none')return{alpha:1,shiftX:0,covers:false};
+ if(motion==='slide')return{alpha:1,shiftX:(1-easeOut(p,4))*1280,covers:p<1};
+ return{alpha:easeOut(p),shiftX:0,covers:p<1};}
+export const needsScrim=(layout,hasMedia)=>!!hasMedia&&layout==='title';
+
