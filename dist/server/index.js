@@ -4740,11 +4740,13 @@ var liveBase = (env) => {
   const base = env?.LIVE_SOURCE ?? LIVE_DEFAULT;
   return base && base !== "off" ? base.replace(/\/$/, "") : null;
 };
+var LIVE_WINDOW = 3e4;
 async function liveGet(env, path) {
   const base = liveBase(env);
   if (!base) return null;
   try {
-    const r = await fetch(base + path, { signal: AbortSignal.timeout(2500), cf: { cacheTtl: 30, cacheEverything: true } });
+    const bust = (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / LIVE_WINDOW);
+    const r = await fetch(base + path + bust, { signal: AbortSignal.timeout(2500), cf: { cacheTtl: 30, cacheEverything: true } });
     if (!r.ok) return null;
     const bytes = new Uint8Array(await r.arrayBuffer());
     return bytes.length ? bytes : null;

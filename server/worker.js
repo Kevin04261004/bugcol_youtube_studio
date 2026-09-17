@@ -4,7 +4,8 @@ const LIVE_PATH=/^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json
 const LIVE_TYPES={html:'text/html; charset=utf-8',css:'text/css; charset=utf-8',js:'text/javascript; charset=utf-8',json:'application/json; charset=utf-8',map:'application/json; charset=utf-8',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',woff2:'font/woff2',ico:'image/x-icon'};
 const BUNDLED=typeof STATIC_FILES==='object'?STATIC_FILES:{}, BUILD=typeof BUILD_ID==='string'?BUILD_ID:'dev';
 const liveBase=env=>{const base=env?.LIVE_SOURCE??LIVE_DEFAULT;return base&&base!=='off'?base.replace(/\/$/,''):null;};
-async function liveGet(env,path){const base=liveBase(env);if(!base)return null;try{const r=await fetch(base+path,{signal:AbortSignal.timeout(2500),cf:{cacheTtl:30,cacheEverything:true}});if(!r.ok)return null;const bytes=new Uint8Array(await r.arrayBuffer());return bytes.length?bytes:null;}catch{return null;}}
+const LIVE_WINDOW=30000;
+async function liveGet(env,path){const base=liveBase(env);if(!base)return null;try{const bust=(path.includes('?')?'&':'?')+'t='+Math.floor(Date.now()/LIVE_WINDOW);const r=await fetch(base+path+bust,{signal:AbortSignal.timeout(2500),cf:{cacheTtl:30,cacheEverything:true}});if(!r.ok)return null;const bytes=new Uint8Array(await r.arrayBuffer());return bytes.length?bytes:null;}catch{return null;}}
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...headers}});
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(b=>b.toString(16).padStart(2,'0')).join('');}

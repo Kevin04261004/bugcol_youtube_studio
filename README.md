@@ -53,6 +53,8 @@ npm run build
 
 `main`에 push하면 GitHub Actions가 테스트를 돌리고, **통과한 커밋만** `live` 브랜치로 올립니다. 운영 사이트의 Worker는 `live` 브랜치의 `dist`를 직접 읽어 화면을 내보내므로, 30초 안에 사이트에 반영됩니다. ChatGPT에 배포를 요청할 필요가 없습니다.
 
+Worker는 GitHub 주소에 30초 단위 값을 붙여서 읽습니다. `cf:{cacheTtl}` 로 캐시 시간을 지정하는 방식은 Sites 런타임에서 무시되어, GitHub 가 보내는 `max-age=300` 이 그대로 적용돼 최대 5분이 걸렸습니다. 주소를 바꾸는 방식이라 런타임이 캐시 옵션을 존중하는지와 무관하게 30초 안에 갈아끼워집니다.
+
 ```sh
 git add dist && git commit -m "문구 수정" && git push
 ```
