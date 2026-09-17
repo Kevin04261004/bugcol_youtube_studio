@@ -43,6 +43,15 @@ assert.ok($('cloudSignedOut').textContent.includes('서버 작업 폴더'),'폴�
 assert.ok($('cloudSignIn'),'로그인 버튼이 있어야 한다');
 $('closeFolders').click();
 
+// 대화상자가 열려 있어도 오류 메시지가 backdrop 뒤에 가려지지 않는다
+$('foldersBtn').click();await wait();
+$('newFolderName').value='';$('newCloudFolder').click();await wait(200);
+assert.equal($('toast').textContent,'폴더 이름을 입력하세요.');
+assert.equal($('toast').parentNode.id,'folderDialog','토스트가 열린 대화상자 안으로 올라와야 한다');
+assert.ok($('toast').classList.contains('show'));
+$('closeFolders').click();await wait(100);
+assert.equal($('toast').parentNode,window.document.body,'대화상자를 닫으면 토스트가 제자리로 돌아온다');
+
 // 로그인하면 폴더 관리 화면이 열린다
 signedIn=true;
 $('sampleBtn').click();await wait(100);
@@ -58,6 +67,8 @@ assert.equal(rows().length,0);
 // 지금 작업을 새 폴더로 올린다
 $('newFolderName').value='첫 작업';$('newCloudFolder').click();await wait(700);
 assert.match($('cloudStatus').textContent,/서버 저장 완료/);
+assert.match($('folderStatus').textContent,/서버 저장 완료/,'상태가 대화상자 안에도 보여야 한다');
+assert.equal($('folderStatus').hidden,false);
 assert.deepEqual(names(),['▣ 첫 작업']);
 assert.ok($('currentFolder').classList.contains('linked'));
 assert.ok(rows()[0].classList.contains('current'),'지금 열린 폴더가 표시되어야 한다');
@@ -98,5 +109,5 @@ legacyServer=false;$('refreshFolders').click();await wait(400);
 assert.deepEqual([...rows()[0].querySelectorAll('.text-btn')].map(b=>b.textContent),['이름 바꾸기','삭제']);
 
 assert.deepEqual(errors,[]);
-console.log('PASS folder dialog signed-out guidance, save to new folder, open another project, rename, delete, blank project');
+console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project');
 await window.happyDOM.abort();

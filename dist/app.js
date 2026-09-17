@@ -5,7 +5,9 @@ import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let project={version:1,name:'새로운 롱폼',sentences:[],assets:{}},selected=0,tab='record',busy=false,recording=false,recorder=null,stream=null,ctx=null,analyser=null,recFrame=0,recordStart=0,saveTimer=null,saveChain=Promise.resolve(),toastTimer,undo=new Map(),previewToken=0,audioSource=null,renderCancelled=false;
 const mediaCache=new Map();let cloud=null;
-function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),5000);}
+function toastHost(){return document.querySelector('dialog[open]')||document.body;}
+function toast(msg){const t=$('toast'),host=toastHost();if(t.parentNode!==host)host.append(t);t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),5000);}
+for(const d of document.querySelectorAll('dialog'))d.addEventListener('close',()=>{const t=$('toast');if(t.parentNode!==document.body)document.body.append(t);});
 function time(t,decimal=false){return String(Math.floor(t/60)).padStart(2,'0')+':'+String(Math.floor(t%60)).padStart(2,'0')+(decimal?'.'+Math.floor((t%1)*10):'');}
 const current=()=>project.sentences[selected],duration=s=>(s?.audio?.length||0)/RATE,total=()=>project.sentences.reduce((sum,s)=>sum+duration(s),0);
 const defaultScene=()=>({title:'',subtitle:'',layout:'title',motion:'fade',background:'#171925',captions:true,reviewed:false});
