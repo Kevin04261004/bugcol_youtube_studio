@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "fflate": "0.8.3",
+    "mp4-muxer": "5.2.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/check-interactions.mjs && node scripts/check-audio-timeline.mjs && node scripts/check-cloud-storage.mjs",
+    "build": "node scripts/build-worker.mjs",
+    "dev": "node scripts/dev.mjs"
+  }
+}
