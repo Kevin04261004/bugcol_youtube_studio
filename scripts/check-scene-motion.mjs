@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec,sceneGroups} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec,sceneGroups,unusedAssetKeys} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -147,4 +147,12 @@ assert.equal(validScene({id:1,continues:true}).continues,true);
 assert.equal(validScene({id:1,continues:false}).continues,undefined,'꺼져 있으면 저장하지 않는다');
 assert.equal(validScene({id:1}).continues,undefined);
 
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback, scene continuation groups');
+// 문장을 지운 뒤 아무도 쓰지 않는 소재는 정리하되, 잘라 둔 조각 보관함은 남긴다
+const keys=['assets/1_a.png','assets/2_b.mp4','clips/초록.mp4','clips/안 쓰는 조각.mp4'];
+assert.deepEqual(unusedAssetKeys(keys,['assets/1_a.png','clips/초록.mp4']),['assets/2_b.mp4']);
+assert.deepEqual(unusedAssetKeys(keys,[]),['assets/1_a.png','assets/2_b.mp4'],'조각 보관함은 안 쓰여도 남는다');
+assert.deepEqual(unusedAssetKeys(keys,[undefined,null,'assets/2_b.mp4']),['assets/1_a.png'],'소재 없는 장면은 걸러진다');
+assert.deepEqual(unusedAssetKeys([],['assets/1_a.png']),[]);
+assert.deepEqual(unusedAssetKeys(),[]);
+
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback, scene continuation groups, unused asset cleanup');

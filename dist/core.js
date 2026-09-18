@@ -62,4 +62,7 @@ export function sceneGroups(items){const list=(items||[]).map(it=>({continues:!!
  list.forEach((it,i)=>{if(i===0||!it.continues){base=i;offset=0;}out[i].baseIndex=base;out[i].offset=offset;offset+=it.seconds;});
  const spans=new Map();list.forEach((it,i)=>spans.set(out[i].baseIndex,(spans.get(out[i].baseIndex)||0)+it.seconds));
  out.forEach(o=>{o.span=spans.get(o.baseIndex)||0;});return out;}
+// 어느 장면도 쓰지 않는 소재. 잘라 둔 조각(clips/)은 보관함이라 남긴다.
+export function unusedAssetKeys(keys,used,keep='clips/'){const live=new Set((used||[]).filter(Boolean));
+ return (keys||[]).filter(k=>!String(k).startsWith(keep)&&!live.has(k));}
 

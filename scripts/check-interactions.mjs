@@ -62,6 +62,35 @@ const edit=registered.get('update_longform_scenes');assert.ok(edit);
 edit.execute({scenes:[{id:1,title:'검사 장면'}]});
 assert.equal(read.execute().sentences[0].scene.title,'검사 장면');
 assert.throws(()=>edit.execute({scenes:[{id:999999,title:'실패'}]}));
+// 문장 삭제
+const ids=()=>readNow.execute().sentences.map(s=>s.id);
+const dels=()=>[...window.document.querySelectorAll('#sentenceList .sentence-del')];
+const before=ids();
+assert.ok(before.length>=4);
+assert.equal(dels().length,before.length,'문장마다 삭제 버튼이 있다');
+dels()[1].click();
+assert.deepEqual(ids(),before.filter((_,i)=>i!==1),'고른 문장만 사라진다');
+assert.equal(dels().length,before.length-1,'목록도 함께 줄어든다');
+
+// 이어가던 문장은 지워진 앞 장면을 물려받는다
+const kept=ids();
+edit.execute({scenes:[{id:kept[0],title:'물려줄 장면',background:'#123456'}]});
+cards()[1].click();
+$$('sceneContinue').checked=true;$$('sceneContinue').dispatchEvent(new window.Event('change',{bubbles:true}));
+assert.equal(readNow.execute().sentences[1].scene.continues,true);
+dels()[0].click();
+const after=readNow.execute().sentences;
+assert.deepEqual(after.map(s=>s.id),kept.slice(1),'앞 문장이 사라진다');
+assert.equal(after[0].scene.title,'물려줄 장면','이어가던 문장이 그 장면을 물려받는다');
+assert.equal(after[0].scene.background,'#123456');
+assert.equal(after[0].scene.continues,undefined,'물려받았으니 이어가기는 꺼진다');
+
+// 마지막 문장까지 지우면 빈 화면으로 돌아간다
+while(dels().length)dels()[0].click();
+assert.equal(ids().length,0,'문장이 모두 사라진다');
+assert.match(window.document.getElementById('sentenceList').textContent,/첫 번째 이야기를 가져오세요/);
+assert.equal(window.document.getElementById('sentenceText').disabled,true);
+
 assert.deepEqual(errors,[]);
-console.log('PASS sample creation, scene navigation, timeline click reviews and moves preview, scene continuation toggle, export navigation');
+console.log('PASS sample creation, scene navigation, timeline click reviews and moves preview, scene continuation toggle, sentence delete with scene handover, export navigation');
 await window.happyDOM.abort();
