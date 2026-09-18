@@ -34,6 +34,25 @@ assert.equal(readNow.execute().sentences[2].scene.reviewed,true,'다른 장면�
 assert.equal(readNow.execute().sentences[0].scene.reviewed,true);
 assert.ok(cards()[0].className.includes('selected'));
 assert.match(window.document.getElementById('previewTime').textContent,/^\d\d:\d\d \/ \d\d:\d\d$/,'미리보기 시간이 고른 위치를 가리킨다');
+// 앞 장면 이어가기
+const $$=id=>window.document.getElementById(id);
+cards()[0].click();
+assert.equal($$('sceneContinue').disabled,true,'첫 문장은 이어갈 앞 장면이 없다');
+cards()[1].click();
+assert.equal($$('sceneContinue').disabled,false);
+assert.equal($$('sceneContinue').checked,false);
+assert.equal($$('continueNote').hidden,true);
+$$('sceneContinue').checked=true;$$('sceneContinue').dispatchEvent(new window.Event('change',{bubbles:true}));
+assert.equal(readNow.execute().sentences[1].scene.continues,true,'이어가기가 장면에 저장된다');
+assert.match(cards()[1].textContent,/앞 장면 이어감/);
+assert.equal($$('continueNote').hidden,false,'무엇이 달라지는지 알려준다');
+for(const id of ['sceneTitle','sceneLayout','sceneMotion','replaceAsset'])
+ assert.equal($$(id).disabled,true,id+' 는 앞 장면을 따라가므로 잠긴다');
+assert.match($$('exportChecklist').textContent,/장면 검수2 \/ 3 완료/,'이어가는 문장은 검수 대상에서 빠져 분모가 4에서 3으로 준다');
+$$('sceneContinue').checked=false;$$('sceneContinue').dispatchEvent(new window.Event('change',{bubbles:true}));
+assert.equal(readNow.execute().sentences[1].scene.continues,undefined,'끄면 다시 제 장면을 쓴다');
+assert.equal($$('sceneTitle').disabled,false);
+assert.match($$('exportChecklist').textContent,/장면 검수3 \/ 4 완료/,'끄면 다시 검수 대상이 된다');
 window.document.getElementById('goExport').click();
 assert.equal(window.document.getElementById('exportView').hidden,false);
 window.document.getElementById('addSentence').click();
@@ -44,5 +63,5 @@ edit.execute({scenes:[{id:1,title:'검사 장면'}]});
 assert.equal(read.execute().sentences[0].scene.title,'검사 장면');
 assert.throws(()=>edit.execute({scenes:[{id:999999,title:'실패'}]}));
 assert.deepEqual(errors,[]);
-console.log('PASS sample creation, scene navigation, timeline click reviews and moves preview, export navigation');
+console.log('PASS sample creation, scene navigation, timeline click reviews and moves preview, scene continuation toggle, export navigation');
 await window.happyDOM.abort();

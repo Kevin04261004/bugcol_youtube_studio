@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec,sceneGroups} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -123,4 +123,28 @@ assert.equal(await pickClipCodec({width:640},async()=>{throw Error('지원 확�
 assert.equal((await pickClipCodec({width:640},async c=>{if(c.codec==='avc1.420028')throw Error('nope');return{supported:true};})).muxer,'vp9','터진 코덱은 건너뛴다');
 for(const option of CLIP_CODECS)assert.ok(['avc','hevc','vp9','av1'].includes(option.muxer),option.muxer+' 는 muxer 가 받는 이름이어야 한다');
 
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback');
+// 이어가기로 묶인 장면: 어느 장면을 쓰고, 그 장면이 시작한 지 얼마나 됐는지
+const groups=sceneGroups([{seconds:2},{seconds:3,continues:true},{seconds:1,continues:true},{seconds:4},{seconds:2,continues:true}]);
+assert.deepEqual(groups.map(g=>g.baseIndex),[0,0,0,3,3],'이어가는 문장은 앞 장면을 쓴다');
+assert.deepEqual(groups.map(g=>g.offset),[0,2,5,0,4],'이어가면 장면 시간이 계속 흐른다');
+assert.deepEqual(groups.map(g=>g.span),[6,6,6,6,6],'묶인 장면의 전체 길이는 구성원이 모두 같다');
+
+const plain=sceneGroups([{seconds:2},{seconds:3},{seconds:1}]);
+assert.deepEqual(plain.map(g=>g.baseIndex),[0,1,2],'이어가기를 안 쓰면 문장마다 새 장면이다');
+assert.deepEqual(plain.map(g=>g.offset),[0,0,0]);
+assert.deepEqual(plain.map(g=>g.span),[2,3,1]);
+
+assert.deepEqual(sceneGroups([{seconds:2,continues:true}]),[{baseIndex:0,offset:0,span:2}],'첫 문장은 이어갈 앞 장면이 없다');
+assert.deepEqual(sceneGroups([]),[]);
+assert.deepEqual(sceneGroups(),[]);
+assert.deepEqual(sceneGroups([{seconds:-3},{continues:true}]).map(g=>g.offset),[0,0],'음수와 빈 길이는 0 으로 본다');
+const all=sceneGroups([{seconds:1},{seconds:1,continues:true},{seconds:1,continues:true},{seconds:1,continues:true}]);
+assert.deepEqual(all.map(g=>g.baseIndex),[0,0,0,0],'끝까지 한 장면으로 이어갈 수 있다');
+assert.deepEqual(all.map(g=>g.offset),[0,1,2,3]);
+
+// 이어가기는 저장되고 복원된다
+assert.equal(validScene({id:1,continues:true}).continues,true);
+assert.equal(validScene({id:1,continues:false}).continues,undefined,'꺼져 있으면 저장하지 않는다');
+assert.equal(validScene({id:1}).continues,undefined);
+
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback, scene continuation groups');
