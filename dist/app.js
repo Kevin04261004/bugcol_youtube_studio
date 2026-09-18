@@ -1,7 +1,7 @@
 import{createCloudEditor}from'./cloud.js';
 import{zip,unzipSync,strToU8,strFromU8}from'./vendor/fflate.js';
 import{Muxer,ArrayBufferTarget,FileSystemWritableFileStreamTarget}from'./vendor/mp4-muxer.js';
-import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt}from'./core.js';
+import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec}from'./core.js';
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let project={version:1,name:'새로운 롱폼',sentences:[],assets:{}},selected=0,tab='record',busy=false,recording=false,recorder=null,stream=null,ctx=null,analyser=null,recFrame=0,recordStart=0,saveTimer=null,saveChain=Promise.resolve(),toastTimer,undo=new Map(),previewToken=0,audioSource=null,renderCancelled=false;
 const mediaCache=new Map();let cloud=null;
@@ -38,7 +38,7 @@ let dragStart=0;$('waveform').onpointerdown=e=>{if(!current()?.audio||recording|
 function stopPlayback(){previewToken++;previewSeek=null;previewing=false;if(audioSource){try{audioSource.stop();}catch{}audioSource=null;}for(const v of mediaCache.values())if(v.el instanceof HTMLVideoElement)v.el.pause();$('previewPlay').textContent='▶ 전체 미리보기';}
 async function playSelected(){if(!current()?.audio||recording||busy)return;stopPlayback();const c=await audioContext(),s=current(),start=Math.max(0,+$('cutStart').value),end=Math.min(duration(s),+$('cutEnd').value);if(end<=start)return toast('재생할 구간을 선택하세요.');const b=c.createBuffer(1,s.audio.length,RATE);b.copyToChannel(s.audio,0);audioSource=c.createBufferSource();audioSource.buffer=b;audioSource.connect(c.destination);audioSource.start(0,start,end-start);}
 function editSelected(keep){if(recording||busy||!current()?.audio)return;stopPlayback();try{updateAudio(editAudio(current().audio,+$('cutStart').value,+$('cutEnd').value,keep));toast(keep?'선택한 구간만 남겼습니다.':'선택한 구간을 삭제하고 앞뒤를 이어 붙였습니다.');}catch(e){toast(e.message);}}
-function renderInspector(){const s=current(),v=s?.scene||defaultScene();$('sceneNumber').textContent=s?pad(s.id):'—';for(const[k,id]of Object.entries({title:'sceneTitle',subtitle:'sceneSubtitle',layout:'sceneLayout',motion:'sceneMotion',background:'sceneColor'}))$(id).value=v[k];$('sceneCaptions').checked=v.captions;$('sceneReviewed').checked=v.reviewed;document.querySelectorAll('.inspector input,.inspector select,.inspector textarea,.inspector button').forEach(el=>el.disabled=!s);syncClip();}
+function renderInspector(){const s=current(),v=s?.scene||defaultScene();$('sceneNumber').textContent=s?pad(s.id):'—';for(const[k,id]of Object.entries({title:'sceneTitle',subtitle:'sceneSubtitle',layout:'sceneLayout',motion:'sceneMotion',background:'sceneColor'}))$(id).value=v[k];$('sceneCaptions').checked=v.captions;$('sceneReviewed').checked=v.reviewed;document.querySelectorAll('.inspector input,.inspector select,.inspector textarea,.inspector button').forEach(el=>el.disabled=!s);syncClip();if($('cutDialog').open)renderClips();}
 function clipNote(){const s=current();if(!s)return;const el=$('clipVideo'),d=el.duration||0,{start,end,span}=clipRange(s.scene,d),need=duration(s);
  if(!d)return void($('clipNote').textContent='영상 정보를 읽는 중…');
  const short=need>span+.05,long=need>0&&span>need+.05;
@@ -67,7 +67,7 @@ const v=s.scene,move=sceneEntrance(v.motion,t),under=move.covers&&prev?.s;
 if(under)paintScene(g,prev.s,duration(prev.s),prev.media);else{g.fillStyle=v.background||'#171925';g.fillRect(0,0,1280,720);}
 g.save();g.globalAlpha=move.alpha;g.translate(move.shiftX,0);paintScene(g,s,t,media);g.restore();g.restore();}
 let previewSeek=null,previewing=false;
-let clipUrl=null,clipAsset=null;
+let clipUrl=null,clipAsset=null,cutUrl=null,cutting=false,cutCancelled=false;
 const offsetOf=i=>offsetAt(project.sentences.map(duration),i);
 let drawVersion=0;async function drawPreview(){const version=++drawVersion,s=current();try{const media=await loadMedia(s?.scene.asset);if(version!==drawVersion)return;if(media instanceof HTMLVideoElement){try{await seekVideo(media,clipTimeAt(s.scene,0,media.duration));}catch{}if(version!==drawVersion)return;}drawScene($('preview'),s,1,media);$('previewTime').textContent=time(offsetOf(selected))+' / '+time(total());}catch(e){toast(e.message);drawScene($('preview'),s,1);}}
 async function previewAll(){if(busy||recording)return;if(audioSource){stopPlayback();return;}if(!project.sentences.length||project.sentences.some(s=>!s.audio))return toast('모든 문장을 녹음하면 전체 미리보기를 할 수 있습니다.');stopPlayback();const token=previewToken;await audioContext();$('previewPlay').textContent='Ⅱ 재생 중 · 정지';previewing=true;let offset=0,prev=null;try{for(let i=0;i<project.sentences.length;i++){if(token!==previewToken)return;const s=project.sentences[i],media=await loadMedia(s.scene.asset);if(token!==previewToken)return;selected=i;renderList();renderInspector();renderTimeline();if(media instanceof HTMLVideoElement){media.currentTime=clipRange(s.scene,media.duration).start;await media.play();}const b=ctx.createBuffer(1,s.audio.length,RATE);b.copyToChannel(s.audio,0);const src=ctx.createBufferSource();src.buffer=b;src.connect(ctx.destination);audioSource=src;const start=ctx.currentTime;src.start();await new Promise(resolve=>{const tick=()=>{if(token!==previewToken||previewSeek!==null)return resolve();const t=ctx.currentTime-start;if(media instanceof HTMLVideoElement&&media.currentTime>=clipRange(s.scene,media.duration).end)media.pause();drawScene($('preview'),s,Math.min(t,duration(s)),media,prev);$('previewTime').textContent=time(offset+t)+' / '+time(total());if(t>=duration(s))resolve();else requestAnimationFrame(tick);};tick();});if(media instanceof HTMLVideoElement)media.pause();if(previewSeek!==null){const target=previewSeek;previewSeek=null;try{src.stop();}catch{}audioSource=null;i=target-1;offset=offsetOf(target);prev=null;continue;}offset+=duration(s);prev={s,media};}if(token===previewToken)stopPlayback();}catch(e){stopPlayback();toast(e.message);}}
@@ -76,7 +76,7 @@ function zipAsync(files){return new Promise((resolve,reject)=>zip(files,{level:0
 async function exportPackage(full=false){if(busy||recording)return;if(!project.sentences.length)return toast('먼저 대본을 추가하세요.');if(!full&&!project.sentences.some(s=>s.audio))return toast('최소 한 문장을 녹음하세요.');setBusy(true);try{const files={},manifest={version:1,name:project.name,sampleRate:RATE,channels:1,sentences:project.sentences.map(s=>({id:s.id,text:s.text,audio:s.audio?pad(s.id)+'.wav':null,durationSeconds:duration(s),scene:s.scene}))};for(const s of project.sentences)if(s.audio)files[pad(s.id)+'.wav']=wavBytes(s.audio);files['manifest.json']=strToU8(JSON.stringify(manifest,null,2));files['script.txt']=strToU8(project.sentences.map(s=>pad(s.id)+'\t'+s.text).join('\n'));files['ASTRA_README.md']=strToU8(ASTRA_GUIDE);if(full){files['project.json']=strToU8(JSON.stringify(manifest,null,2));for(const[name,blob]of Object.entries(project.assets))files[name]=new Uint8Array(await blob.arrayBuffer());files['scenes.json']=strToU8(JSON.stringify({version:1,scenes:project.sentences.map(s=>({id:s.id,...s.scene}))},null,2));}download(new Blob([await zipAsync(files)],{type:'application/zip'}),fileName()+(full?'_project.zip':'_audio.zip'));toast(full?'프로젝트 백업을 다운로드했습니다.':'숫자 WAV와 Astra 작업 안내를 다운로드했습니다.');}catch(e){toast('ZIP 저장 실패: '+e.message);}finally{setBusy(false);}}
 function readZip(data){let size=0;const files=unzipSync(data,{filter:f=>{size+=f.originalSize;if(size>1024*1024*1024)throw Error('압축 해제 크기가 1GB를 넘습니다. 소재를 나누어 가져오세요.');return !f.name.endsWith('/')&&!f.name.startsWith('__MACOSX/')&&!/(^|\/)\./.test(f.name);}});return files;}
 async function importSceneFiles(fileList,replace=false){if(!current())return toast('먼저 대본을 준비하세요.');if(busy||recording)return;setBusy(true);stopPlayback();try{const files={};for(const f of fileList){if(f.size>1024*1024*1024)throw Error('파일은 1GB 이하로 가져오세요.');if(/\.zip$/i.test(f.name))Object.assign(files,readZip(new Uint8Array(await f.arrayBuffer())));else files[f.name]=new Uint8Array(await f.arrayBuffer());}const assets={},updates=[],jsonKey=Object.keys(files).find(n=>n==='scenes.json'||n.endsWith('/scenes.json'));if(jsonKey){const spec=JSON.parse(strFromU8(files[jsonKey]));if(spec.version!==1||!Array.isArray(spec.scenes))throw Error('scenes.json의 version: 1과 scenes 배열을 확인하세요.');const prefix=jsonKey.slice(0,-'scenes.json'.length),ids=new Set();for(const raw of spec.scenes){const scene=validScene(raw);if(ids.has(scene.id))throw Error('중복 장면 번호: '+scene.id);ids.add(scene.id);if(!project.sentences.some(s=>s.id===scene.id))throw Error('대본에 없는 문장 번호: '+scene.id);if(scene.asset){const key=prefix+scene.asset;if(!files[key]||!assetType(key))throw Error('장면 소재 누락 또는 지원하지 않는 형식: '+scene.asset);const normalized='assets/'+scene.id+'_'+scene.asset.split('/').pop();assets[normalized]=new Blob([files[key]],{type:blobType(key)});scene.asset=normalized;}updates.push(scene);}}else{for(const[name,bytes]of Object.entries(files)){if(!assetType(name))continue;const n=name.split('/').pop().match(/^(\d+)\./),id=replace?current().id:n?Number(n[1]):null;if(!id||!project.sentences.some(s=>s.id===id))throw Error('소재 파일명은 문장 번호여야 합니다: 001.png, 002.mp4');const key='assets/'+id+'_'+name.split('/').pop();assets[key]=new Blob([bytes],{type:blobType(name)});if(updates.some(s=>s.id===id))throw Error('한 문장에 소재가 여러 개입니다.');updates.push({id,asset:key,layout:'full'});}}if(!updates.length)throw Error('가져올 장면이 없습니다.');clearMedia();Object.assign(project.assets,assets);for(const scene of updates){const s=project.sentences.find(s=>s.id===scene.id);if(jsonKey)s.scene={...defaultScene(),...scene,reviewed:false};else s.scene={...s.scene,...scene,reviewed:false};}scheduleSave();render();toast(updates.length+'개 장면을 녹음 길이에 맞춰 연결했습니다.');}catch(e){toast('장면 가져오기 실패: '+e.message);}finally{setBusy(false);}}
-async function restoreProject(file){if(busy||recording)return;if(project.sentences.length&&!confirm('현재 작업을 이 ZIP의 프로젝트로 교체할까요?'))return;setBusy(true);try{const files=readZip(new Uint8Array(await file.arrayBuffer())),raw=files['project.json']||files['manifest.json'];if(!raw)throw Error('프로젝트 또는 녹음 ZIP을 선택하세요.');const m=JSON.parse(strFromU8(raw));if(m.version!==1||!Array.isArray(m.sentences)||m.sentences.length>2000)throw Error('지원하지 않는 프로젝트입니다.');const next={version:1,name:String(m.name||'가져온 프로젝트'),sentences:[],assets:{}},ids=new Set();for(const item of m.sentences){if(typeof item.text!=='string')throw Error('문장 텍스트 오류');const scene=validScene({id:item.id,...item.scene});if(ids.has(scene.id))throw Error('중복 문장 번호');ids.add(scene.id);const s=newSentence(item.text,scene.id);s.scene={...defaultScene(),...scene,reviewed:!!item.scene?.reviewed};if(item.audio){if(!files[item.audio])throw Error('누락된 녹음: '+item.audio);s.audio=await decodeAudio(new Blob([files[item.audio]]));}if(scene.asset){if(!files[scene.asset]){delete s.scene.asset;s.scene.reviewed=false;}else next.assets[scene.asset]=new Blob([files[scene.asset]],{type:blobType(scene.asset)});}next.sentences.push(s);}stopPlayback();clearMedia();project=next;selected=0;undo.clear();$('projectName').value=project.name;scheduleSave();render();toast('프로젝트를 복원했습니다.');}catch(e){toast('프로젝트 복원 실패: '+e.message);}finally{setBusy(false);}}
+async function restoreProject(file){if(busy||recording)return;if(project.sentences.length&&!confirm('현재 작업을 이 ZIP의 프로젝트로 교체할까요?'))return;setBusy(true);try{const files=readZip(new Uint8Array(await file.arrayBuffer())),raw=files['project.json']||files['manifest.json'];if(!raw)throw Error('프로젝트 또는 녹음 ZIP을 선택하세요.');const m=JSON.parse(strFromU8(raw));if(m.version!==1||!Array.isArray(m.sentences)||m.sentences.length>2000)throw Error('지원하지 않는 프로젝트입니다.');const next={version:1,name:String(m.name||'가져온 프로젝트'),sentences:[],assets:{}},ids=new Set();for(const item of m.sentences){if(typeof item.text!=='string')throw Error('문장 텍스트 오류');const scene=validScene({id:item.id,...item.scene});if(ids.has(scene.id))throw Error('중복 문장 번호');ids.add(scene.id);const s=newSentence(item.text,scene.id);s.scene={...defaultScene(),...scene,reviewed:!!item.scene?.reviewed};if(item.audio){if(!files[item.audio])throw Error('누락된 녹음: '+item.audio);s.audio=await decodeAudio(new Blob([files[item.audio]]));}if(scene.asset){if(!files[scene.asset]){delete s.scene.asset;s.scene.reviewed=false;}else next.assets[scene.asset]=new Blob([files[scene.asset]],{type:blobType(scene.asset)});}next.sentences.push(s);}for(const[name,bytes]of Object.entries(files))if(name.startsWith('clips/')&&assetType(name)&&!next.assets[name])next.assets[name]=new Blob([bytes],{type:blobType(name)});stopPlayback();clearMedia();project=next;selected=0;undo.clear();$('projectName').value=project.name;scheduleSave();render();toast('프로젝트를 복원했습니다.');}catch(e){toast('프로젝트 복원 실패: '+e.message);}finally{setBusy(false);}}
 async function seekVideo(video,t){const target=Math.max(0,Math.min(t,Math.max(0,video.duration-.035)));if(Math.abs(video.currentTime-target)<.0005&&video.readyState>=2)return;await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{clean();reject(Error('영상 프레임을 읽을 수 없습니다. 소재를 MP4 H.264로 변환해 주세요.'));},10000);const clean=()=>{clearTimeout(timeout);video.removeEventListener('seeked',done);video.removeEventListener('error',fail);};const done=()=>{clean();resolve();},fail=()=>{clean();reject(Error('영상 소재 오류'));};video.addEventListener('seeked',done);video.addEventListener('error',fail);video.currentTime=target;});}
 async function renderMp4(){if(busy||recording)return;const list=project.sentences;if(!list.length||list.some(s=>!s.audio||!s.scene.reviewed))return toast('녹음과 장면 검수를 먼저 완료하세요.');if(!globalThis.VideoEncoder||!globalThis.AudioEncoder)return toast('이 브라우저는 MP4 인코딩을 지원하지 않습니다. PC Chrome 또는 Edge에서 프로젝트 ZIP을 열어 주세요.');let fileHandle=null,writer=null,ve=null,ae=null,wakeLock=null;renderCancelled=false;stopPlayback();const width=+$('resolution').value,height=width*9/16;try{if(globalThis.showSaveFilePicker){try{fileHandle=await showSaveFilePicker({suggestedName:fileName()+'.mp4',types:[{description:'MP4 영상',accept:{'video/mp4':['.mp4']}}]});}catch(e){if(e.name==='AbortError')return;fileHandle=null;}}setBusy(true);const videoConfig={codec:'avc1.420028',width,height,bitrate:width===1920?6500000:3500000,framerate:30,latencyMode:'realtime',avc:{format:'avc'}},audioConfig={codec:'mp4a.40.2',sampleRate:RATE,numberOfChannels:1,bitrate:128000};const [vs,as]=await Promise.all([VideoEncoder.isConfigSupported(videoConfig),AudioEncoder.isConfigSupported(audioConfig)]);if(!vs.supported||!as.supported)throw Error('이 기기에서 H.264/AAC MP4 인코딩을 사용할 수 없습니다. PC Chrome·Edge로 프로젝트 ZIP을 옮겨 주세요.');if(!fileHandle&&total()*(videoConfig.bitrate+128000)/8>700*1024*1024)throw Error('긴 영상은 직접 파일 저장이 가능한 PC Chrome·Edge에서 렌더링하세요.');if(fileHandle)writer=await fileHandle.createWritable();try{wakeLock=await navigator.wakeLock?.request('screen');}catch{}const target=writer?new FileSystemWritableFileStreamTarget(writer):new ArrayBufferTarget(),muxer=new Muxer({target,video:{codec:'avc',width,height,frameRate:30},audio:{codec:'aac',numberOfChannels:1,sampleRate:RATE},fastStart:false,firstTimestampBehavior:'offset'});let encoderError=null;ve=new VideoEncoder({output:(chunk,meta)=>{try{muxer.addVideoChunk(chunk,meta);}catch(e){encoderError=e;}},error:e=>encoderError=e});ae=new AudioEncoder({output:(chunk,meta)=>{try{muxer.addAudioChunk(chunk,meta);}catch(e){encoderError=e;}},error:e=>encoderError=e});ve.configure(videoConfig);ae.configure(audioConfig);const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;await document.fonts.ready;$('renderProgress').hidden=false;$('cancelRender').hidden=false;$('renderProgress').value=0;let sampleOffset=0,frame=0;
 const packets=audioPackets(list.map(s=>s.audio));let packet=packets.next();
@@ -89,7 +89,128 @@ $('txtInput').onchange=async e=>{const file=e.target.files[0];e.target.value='';
 $('audioInput').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file||busy||recording)return;if(current()?.audio&&!$('appendRecording').checked&&!confirm('현재 문장 녹음을 이 파일로 교체할까요?'))return;setBusy(true);try{const audio=await decodeAudio(file);updateAudio($('appendRecording').checked&&current().audio?joinAudio(current().audio,audio):audio);}catch(e){toast(e.message);}finally{setBusy(false);}};
 $('sceneInput').onchange=async e=>{const files=[...e.target.files];e.target.value='';if(files.length)await importSceneFiles(files,replaceMode);};$('projectInput').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(file)await restoreProject(file);};
 $('sentenceText').oninput=()=>{if(current()&&!busy&&!recording){current().text=$('sentenceText').value;changed();renderList();}};$('projectName').oninput=()=>{project.name=$('projectName').value;scheduleSave();};for(const id of['cutStart','cutEnd'])$(id).oninput=()=>drawWave();
-for(const[k,id]of Object.entries({title:'sceneTitle',subtitle:'sceneSubtitle',layout:'sceneLayout',motion:'sceneMotion',background:'sceneColor'}))$(id).oninput=()=>{if(!current()||busy)return;stopPlayback();current().scene[k]=$(id).value;changed();$('sceneReviewed').checked=false;drawPreview();renderTimeline();};$('sceneCaptions').onchange=()=>{if(current()){current().scene.captions=$('sceneCaptions').checked;changed();$('sceneReviewed').checked=false;drawPreview();}};$('clipScrub').oninput=()=>{const el=$('clipVideo');if(el.duration)el.currentTime=(+$('clipScrub').value)*el.duration;};
+for(const[k,id]of Object.entries({title:'sceneTitle',subtitle:'sceneSubtitle',layout:'sceneLayout',motion:'sceneMotion',background:'sceneColor'}))$(id).oninput=()=>{if(!current()||busy)return;stopPlayback();current().scene[k]=$(id).value;changed();$('sceneReviewed').checked=false;drawPreview();renderTimeline();};$('sceneCaptions').onchange=()=>{if(current()){current().scene.captions=$('sceneCaptions').checked;changed();$('sceneReviewed').checked=false;drawPreview();}};// ── 영상 자르기 도구 ────────────────────────────────────────────────
+const clipKeys=()=>Object.keys(project.assets).filter(k=>k.startsWith('clips/')).sort();
+const clipLabel=key=>key.slice('clips/'.length);
+const srcSpan=()=>clipRange({clipStart:+$('srcStart').value||0,clipEnd:+$('srcEnd').value||0},$('srcVideo').duration||0);
+function srcNote(extra){
+ const s=current(),el=$('srcVideo');
+ if(extra!==undefined)return void($('srcStatus').textContent=extra);
+ if(!el.duration)return void($('srcStatus').textContent='원본 영상을 열면 구간을 정할 수 있습니다.');
+ const {start,end,span}=srcSpan();
+ $('srcStatus').textContent=`자를 구간 ${start.toFixed(2)}초 ~ ${end.toFixed(2)}초 · 길이 ${span.toFixed(2)}초`
+  +(s?` · 지금 고른 문장 ${pad(s.id)} 녹음 ${duration(s).toFixed(2)}초`:'');
+}
+function renderClips(){
+ const keys=clipKeys(),list=$('clipList'),s=current();
+ $('clipCount').textContent=keys.length;list.replaceChildren();
+ if(!keys.length)return void(list.textContent='아직 잘라 둔 영상이 없습니다. 원본을 열고 구간을 잘라 보세요.');
+ for(const key of keys){
+  const row=document.createElement('div');row.className='clip-item'+(s?.scene.asset===key?' current':'');
+  const info=document.createElement('div');info.className='clip-info';
+  const name=document.createElement('strong'),meta=document.createElement('small');
+  name.textContent='✂ '+clipLabel(key);
+  const used=project.sentences.filter(x=>x.scene.asset===key).map(x=>pad(x.id));
+  meta.textContent=(project.assets[key].size/1048576).toFixed(1)+'MB'+(used.length?' · 문장 '+used.join(', ')+'에서 사용 중':' · 아직 넣지 않음');
+  info.append(name,meta);
+  const acts=document.createElement('div');acts.className='clip-item-actions';
+  const use=document.createElement('button');use.className='primary';use.disabled=!s;
+  use.textContent=s?`문장 ${pad(s.id)}에 넣기`:'문장을 먼저 고르세요';use.onclick=()=>useClip(key);
+  const dl=document.createElement('button');dl.className='text-btn';dl.textContent='내려받기';
+  dl.onclick=()=>download(project.assets[key],clipLabel(key));
+  const del=document.createElement('button');del.className='text-btn danger';del.textContent='삭제';
+  del.onclick=()=>removeClip(key);
+  acts.append(use,dl,del);row.append(info,acts);list.append(row);
+ }
+}
+function useClip(key){
+ const s=current();if(!s)return toast('문장을 먼저 고르세요.');
+ if(!project.assets[key])return toast('조각을 찾을 수 없습니다.');
+ s.scene.asset=key;s.scene.layout='full';delete s.scene.clipStart;delete s.scene.clipEnd;s.scene.reviewed=false;
+ clearMedia();scheduleSave();
+ const next=Math.min(project.sentences.length-1,selected+1),moved=next!==selected;
+ toast(`문장 ${pad(s.id)}에 넣었습니다.`+(moved?` 다음 문장 ${pad(project.sentences[next].id)}로 옮겼습니다.`:''));
+ selected=next;render();renderClips();
+}
+function removeClip(key){
+ const used=project.sentences.filter(s=>s.scene.asset===key);
+ if(!confirm(`‘${clipLabel(key)}’ 조각을 지울까요?`+(used.length?` 문장 ${used.map(s=>pad(s.id)).join(', ')}에서 쓰고 있어 그 장면의 영상도 사라집니다.`:'')))return;
+ for(const s of used){delete s.scene.asset;delete s.scene.clipStart;delete s.scene.clipEnd;s.scene.reviewed=false;}
+ delete project.assets[key];clearMedia();scheduleSave();render();renderClips();
+ toast('조각을 지웠습니다.');
+}
+async function cutClip(){
+ if(cutting)return;
+ const video=$('srcVideo');
+ if(!video.duration)throw Error('원본 영상을 먼저 열어 주세요.');
+ if(!globalThis.VideoEncoder)throw Error('이 브라우저는 영상 자르기를 지원하지 않습니다. PC Chrome 또는 Edge를 사용하세요.');
+ const {start,end,span}=srcSpan();
+ if(span<.1)throw Error('구간이 너무 짧습니다. 시작과 끝을 다시 정하세요.');
+ if(span>300)throw Error('한 번에 5분 이하로 잘라 주세요.');
+ const {width,height}=clipOutputSize(video.videoWidth,video.videoHeight,+$('resolution').value||1280);
+ const base={width,height,bitrate:width>=1920?6500000:3500000,framerate:30,latencyMode:'realtime'};
+ const pick=await pickClipCodec(base,c=>VideoEncoder.isConfigSupported(c));
+ if(!pick)throw Error('이 기기에서 영상 인코딩을 사용할 수 없습니다. PC Chrome·Edge를 사용하세요.');
+ const config={...base,...pick.extra,codec:pick.codec};
+ const key=uniqueAssetKey(Object.keys(project.assets),safeClipName($('srcName').value,'조각'));
+ cutting=true;cutCancelled=false;setBusy(true);
+ $('srcProgress').hidden=false;$('srcProgress').value=0;$('srcCancel').hidden=false;
+ let enc=null;
+ try{
+  video.pause();
+  const target=new ArrayBufferTarget(),muxer=new Muxer({target,video:{codec:pick.muxer,width,height,frameRate:30},fastStart:'in-memory'});
+  let encErr=null;
+  enc=new VideoEncoder({output:(chunk,meta)=>{try{muxer.addVideoChunk(chunk,meta);}catch(e){encErr=e;}},error:e=>encErr=e});
+  enc.configure(config);
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const g=canvas.getContext('2d'),frames=Math.max(1,Math.round(span*30)),began=performance.now();
+  for(let i=0;i<frames;i++){
+   if(cutCancelled)throw Error('자르기를 취소했습니다.');
+   if(encErr)throw encErr;
+   await seekVideo(video,Math.min(start+i/30,Math.max(start,end-1/60)));
+   g.drawImage(video,0,0,width,height);
+   const frame=new VideoFrame(canvas,{timestamp:Math.round(i*1e6/30),duration:Math.round(1e6/30)});
+   enc.encode(frame,{keyFrame:i%60===0});frame.close();
+   while(enc.encodeQueueSize>8){if(encErr)throw encErr;await new Promise(r=>setTimeout(r,1));}
+   if(i%10===0||i===frames-1){$('srcProgress').value=(i+1)/frames;
+    srcNote(`자르는 중 ${Math.round((i+1)/frames*100)}% · ${width}×${height} ${pick.label} · 경과 ${time((performance.now()-began)/1000)}`);
+    await new Promise(r=>setTimeout(r,0));}
+  }
+  await enc.flush();
+  if(encErr)throw encErr;
+  muxer.finalize();
+  project.assets[key]=new Blob([target.buffer],{type:'video/mp4'});
+  scheduleSave();renderClips();
+  srcNote(`잘라 저장했습니다 · ${clipLabel(key)} · ${span.toFixed(2)}초 · ${(project.assets[key].size/1048576).toFixed(1)}MB`);
+  toast('영상 조각을 저장했습니다. 아래 목록에서 장면에 넣으세요.');
+ }finally{
+  if(enc&&enc.state!=='closed')try{enc.close();}catch{}
+  cutting=false;setBusy(false);$('srcCancel').hidden=true;$('srcProgress').hidden=true;
+ }
+}
+on('cutVideoBtn',()=>{renderClips();srcNote();if(!$('cutDialog').open)$('cutDialog').showModal();});
+$('closeCut').onclick=()=>{if(cutting)return toast('자르기가 끝난 뒤에 닫아 주세요.');$('cutDialog').close();};
+on('openSource',()=>$('sourceInput').click());
+$('sourceInput').onchange=e=>{const file=e.target.files[0];e.target.value='';if(!file)return;
+ if(cutUrl)URL.revokeObjectURL(cutUrl);
+ cutUrl=URL.createObjectURL(file);$('srcVideo').src=cutUrl;
+ $('sourceName').textContent=file.name+' · '+(file.size/1048576).toFixed(0)+'MB';
+ $('cutBody').hidden=false;$('srcStart').value='0.00';$('srcEnd').value='0.00';
+ $('srcName').value=safeClipName(file.name.replace(/\.[^.]+$/,''),'조각');srcNote();};
+$('srcVideo').onloadedmetadata=()=>{$('srcTotal').textContent='/ '+time($('srcVideo').duration);srcNote();};
+$('srcVideo').ontimeupdate=()=>{const el=$('srcVideo');$('srcNow').textContent=time(el.currentTime,true);if(el.duration)$('srcScrub').value=el.currentTime/el.duration;};
+$('srcScrub').oninput=()=>{const el=$('srcVideo');if(el.duration)el.currentTime=(+$('srcScrub').value)*el.duration;};
+$('srcStart').onchange=()=>srcNote();$('srcEnd').onchange=()=>srcNote();
+on('srcSetStart',()=>{$('srcStart').value=$('srcVideo').currentTime.toFixed(2);srcNote();});
+on('srcSetEnd',()=>{$('srcEnd').value=$('srcVideo').currentTime.toFixed(2);srcNote();});
+on('srcFit',()=>{const s=current();if(!s?.audio)return toast('이 문장을 먼저 녹음하세요.');
+ $('srcEnd').value=((+$('srcStart').value||0)+duration(s)).toFixed(2);srcNote();});
+on('srcPlay',async()=>{const el=$('srcVideo'),{start,end}=srcSpan();el.currentTime=start;
+ const stop=()=>{if(el.currentTime>=end){el.pause();el.removeEventListener('timeupdate',stop);}};
+ el.addEventListener('timeupdate',stop);try{await el.play();}catch{}});
+on('srcSave',()=>cutClip().catch(e=>{srcNote(e.message);toast(e.message);}));
+$('srcCancel').onclick=()=>{cutCancelled=true;srcNote('자르기를 멈추는 중…');};
+$('clipScrub').oninput=()=>{const el=$('clipVideo');if(el.duration)el.currentTime=(+$('clipScrub').value)*el.duration;};
 $('clipVideo').ontimeupdate=()=>{const el=$('clipVideo');if(el.duration)$('clipScrub').value=el.currentTime/el.duration;};
 $('clipVideo').onloadedmetadata=()=>clipNote();
 $('clipStart').onchange=()=>setClip('clipStart',+$('clipStart').value);

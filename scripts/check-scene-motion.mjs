@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -76,4 +76,51 @@ assert.throws(()=>validScene({id:1,clipStart:-1}),/0 이상/);
 assert.throws(()=>validScene({id:1,clipEnd:'abc'}),/0 이상/);
 assert.throws(()=>validScene({id:1,clipStart:90000}),/86400/);
 
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range');
+// 잘라 낸 조각을 인코딩할 크기 (H.264 는 짝수만 받는다)
+assert.deepEqual(clipOutputSize(1920,1080,1280),{width:1280,height:720});
+assert.deepEqual(clipOutputSize(3840,2160,1920),{width:1920,height:1080});
+assert.deepEqual(clipOutputSize(640,360,1280),{width:640,height:360},'원본이 작으면 키우지 않는다');
+assert.deepEqual(clipOutputSize(1080,1920,1280),{width:1080,height:1920},'세로 영상도 그대로 담는다');
+for(const [w,h] of [[1001,563],[999,777],[1,1],[1279,721]]){
+ const out=clipOutputSize(w,h,1280);
+ assert.equal(out.width%2,0,w+'x'+h+' 가로가 짝수여야 한다');
+ assert.equal(out.height%2,0,w+'x'+h+' 세로가 짝수여야 한다');
+ assert.ok(out.width>=2&&out.height>=2);
+}
+assert.deepEqual(clipOutputSize(0,0,1280),{width:2,height:2},'크기를 모르면 최소값으로 떨어진다');
+
+// 조각 이름은 장면 소재 경로로 쓰이므로 경로 문자가 남으면 안 된다
+assert.equal(safeClipName('도입부 항공샷'),'도입부 항공샷');
+assert.equal(safeClipName('도입부/항공샷'),'도입부 항공샷');
+assert.equal(safeClipName('a:b\\c../d'),'a b c d');
+assert.equal(safeClipName('   '),'조각','빈 이름은 기본값을 쓴다');
+assert.equal(safeClipName(null),'조각');
+assert.equal(safeClipName('가'.repeat(200)).length,60,'이름 길이를 제한한다');
+for(const bad of ['../../etc','a/b','c:d','e\\f']){
+ assert.ok(!/[/\\:]|\.\./.test(safeClipName(bad)),bad+' 에서 경로 문자가 남았다');
+ assert.doesNotThrow(()=>validScene({id:1,asset:'clips/'+safeClipName(bad)+'.mp4'}));
+}
+
+// 같은 이름으로 여러 번 잘라도 서로 덮어쓰지 않는다
+assert.equal(uniqueAssetKey([],'도입부'),'clips/도입부.mp4');
+assert.equal(uniqueAssetKey(['clips/도입부.mp4'],'도입부'),'clips/도입부-2.mp4');
+assert.equal(uniqueAssetKey(['clips/도입부.mp4','clips/도입부-2.mp4'],'도입부'),'clips/도입부-3.mp4');
+assert.equal(uniqueAssetKey(['assets/1_a.png'],'도입부'),'clips/도입부.mp4','다른 소재와는 겹치지 않는다');
+
+// 되는 코덱을 찾아 자른다. 조각은 최종 렌더링에서 다시 인코딩되므로 H.264 가 아니어도 된다.
+assert.equal(CLIP_CODECS[0].muxer,'avc','H.264 를 가장 먼저 시도한다');
+const asked=[];
+const only=set=>async c=>{asked.push(c.codec);return{supported:set.includes(c.codec)};};
+asked.length=0;
+assert.equal((await pickClipCodec({width:640},only(['avc1.420028','vp09.00.10.08']))).muxer,'avc');
+assert.deepEqual(asked,['avc1.420028'],'첫 코덱이 되면 더 묻지 않는다');
+asked.length=0;
+assert.equal((await pickClipCodec({width:640},only(['vp09.00.10.08']))).muxer,'vp9','H.264 가 없으면 VP9 로 넘어간다');
+assert.equal(asked.length,2);
+assert.equal((await pickClipCodec({width:640},only(['av01.0.04M.08']))).muxer,'av1');
+assert.equal(await pickClipCodec({width:640},only([])),null,'아무것도 없으면 null 로 알린다');
+assert.equal(await pickClipCodec({width:640},async()=>{throw Error('지원 확인 실패');}),null,'확인 자체가 터져도 null 을 준다');
+assert.equal((await pickClipCodec({width:640},async c=>{if(c.codec==='avc1.420028')throw Error('nope');return{supported:true};})).muxer,'vp9','터진 코덱은 건너뛴다');
+for(const option of CLIP_CODECS)assert.ok(['avc','hevc','vp9','av1'].includes(option.muxer),option.muxer+' 는 muxer 가 받는 이름이어야 한다');
+
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback');

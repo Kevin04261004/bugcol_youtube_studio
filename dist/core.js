@@ -44,4 +44,16 @@ export const offsetAt=(durations,index)=>durations.slice(0,Math.max(0,index)).re
 export function clipRange(scene,mediaDuration=0){const start=Math.max(0,Number(scene?.clipStart)||0);const raw=Number(scene?.clipEnd)||0,tail=Math.max(start,Number(mediaDuration)||0);const end=raw>start?(tail>start?Math.min(raw,tail):raw):tail;return{start,end,span:Math.max(0,end-start)};}
 // 장면 시간 t 일 때 영상 소재에서 읽을 위치. 구간이 짧으면 마지막 화면에서 멈춘다.
 export function clipTimeAt(scene,t,mediaDuration=0){const {start,span}=clipRange(scene,mediaDuration);return start+Math.min(Math.max(0,Number(t)||0),Math.max(0,span-1/60));}
+// 잘라 낸 조각을 어떤 크기로 인코딩할지. H.264 는 짝수 크기를 요구한다.
+export function clipOutputSize(width,height,maxWidth=1280){const sw=Math.max(2,Math.round(Number(width)||0)),sh=Math.max(2,Math.round(Number(height)||0));
+ const cap=Math.max(2,Math.round(Number(maxWidth)||1280)),scale=Math.min(1,cap/sw),even=n=>Math.max(2,Math.round(n/2)*2);
+ return{width:even(sw*scale),height:even(sh*scale)};}
+export function safeClipName(name,fallback='조각'){const clean=String(name??'').replace(/[^\p{L}\p{N} _-]/gu,' ').replace(/\s+/g,' ').trim().slice(0,60);return clean||fallback;}
+export function uniqueAssetKey(existingKeys,name,prefix='clips/',ext='.mp4'){const taken=new Set(existingKeys||[]),base=prefix+name;
+ let key=base+ext;for(let n=2;taken.has(key);n++)key=base+'-'+n+ext;return key;}
+// 조각을 인코딩할 코덱 후보. 조각은 최종 렌더링에서 다시 인코딩되므로 H.264 가 아니어도 된다.
+export const CLIP_CODECS=[{codec:'avc1.420028',muxer:'avc',extra:{avc:{format:'avc'}},label:'H.264'},{codec:'vp09.00.10.08',muxer:'vp9',extra:{},label:'VP9'},{codec:'av01.0.04M.08',muxer:'av1',extra:{},label:'AV1'}];
+export async function pickClipCodec(base,isSupported){for(const option of CLIP_CODECS){
+ try{const result=await isSupported({...base,...option.extra,codec:option.codec});if(result?.supported)return option;}catch{}
+}return null;}
 
