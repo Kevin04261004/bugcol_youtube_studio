@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -51,4 +51,29 @@ assert.equal(offsetAt(lens,-2),0,'음수는 시작점으로 본다');
 assert.equal(offsetAt([],0),0);
 assert.equal(offsetAt([undefined,2],2),2,'녹음이 없는 문장은 0초로 센다');
 
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets');
+// 영상 소재에서 쓸 구간
+assert.deepEqual(clipRange({},10),{start:0,end:10,span:10},'구간을 안 정하면 영상 전체를 쓴다');
+assert.deepEqual(clipRange({clipStart:3},10),{start:3,end:10,span:7},'시작만 정하면 끝까지 쓴다');
+assert.deepEqual(clipRange({clipStart:3,clipEnd:8},10),{start:3,end:8,span:5});
+assert.deepEqual(clipRange({clipStart:3,clipEnd:20},10),{start:3,end:10,span:7},'영상 길이를 넘는 끝은 잘린다');
+assert.deepEqual(clipRange({clipStart:3,clipEnd:8},0),{start:3,end:8,span:5},'길이를 아직 모르면 정한 끝을 믿는다');
+assert.deepEqual(clipRange({clipStart:-5},10),{start:0,end:10,span:10},'음수 시작은 0 으로 본다');
+
+assert.equal(clipTimeAt({},0,10),0);
+assert.equal(clipTimeAt({clipStart:3,clipEnd:8},0,10),3,'장면이 시작하면 구간 시작을 읽는다');
+assert.equal(clipTimeAt({clipStart:3,clipEnd:8},2,10),5);
+assert.ok(Math.abs(clipTimeAt({clipStart:3,clipEnd:8},99,10)-(8-1/60))<1e-9,'구간보다 길면 마지막 화면에서 멈춘다');
+assert.ok(clipTimeAt({clipStart:3,clipEnd:8},99,10)<8,'구간 끝을 넘어가지 않는다');
+assert.equal(clipTimeAt({clipStart:3,clipEnd:8},-1,10),3);
+
+// 프로젝트 ZIP 과 scenes.json 으로 구간이 오간다
+assert.equal(validScene({id:1,clipStart:2.5,clipEnd:7}).clipStart,2.5);
+assert.equal(validScene({id:1,clipStart:2.5,clipEnd:7}).clipEnd,7);
+assert.equal(validScene({id:1,clipStart:0,clipEnd:0}).clipStart,undefined,'0 은 전체 사용이라 저장하지 않는다');
+assert.throws(()=>validScene({id:1,clipStart:5,clipEnd:5}),/clipStart 보다 뒤/);
+assert.throws(()=>validScene({id:1,clipStart:5,clipEnd:2}),/clipStart 보다 뒤/);
+assert.throws(()=>validScene({id:1,clipStart:-1}),/0 이상/);
+assert.throws(()=>validScene({id:1,clipEnd:'abc'}),/0 이상/);
+assert.throws(()=>validScene({id:1,clipStart:90000}),/86400/);
+
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range');
