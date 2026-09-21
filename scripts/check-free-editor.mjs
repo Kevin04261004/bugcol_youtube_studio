@@ -17,6 +17,8 @@ window.eval('(async()=>{'+result.outputFiles[0].text+'})()');
 await new Promise(r=>setTimeout(r,100));
 
 const $=id=>window.document.getElementById(id),read=()=>registered.get('get_longform_project').execute();
+assert.ok($('frameRate'),'프레임레이트 선택이 내보내기 화면에 있다');
+assert.equal($('frameRate').value,'30');$('frameRate').value='60';assert.equal($('frameRate').value,'60');
 $('pasteText').value='첫 장면입니다. 문장부호는 유지합니다.\n두 번째 장면';$('applyText').click();
 assert.equal(read().sentences.length,2);assert.equal(read().sentences[0].scene.captions,false);
 $('edAddText').click();assert.equal(read().sentences[0].scene.layers.length,1);
