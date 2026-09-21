@@ -1,18 +1,21 @@
-// Project seconds are absolute; layer/keyframe times remain relative to their scene.
-export function timelineLayout(sentences,duration){
- let total=0,owner=0;
- const scenes=sentences.map((sentence,index)=>{const seconds=Math.max(.1,Number(duration(sentence))||3),start=total;total+=seconds;if(!sentence.scene.continues||index===0)owner=index;return{sentence,index,start,end:total,seconds,owner};});
- const groups=[];for(const s of scenes){if(s.owner===s.index)groups.push({...s});else groups.at(-1).end=s.end;}
- const clips=[];let lanes=2;
- for(const group of groups){const scene=group.sentence.scene,span=group.end-group.start;
-  const layers=Array.isArray(scene.layers)?scene.layers:(scene.asset?[{id:'legacy',asset:scene.asset,name:scene.asset.split('/').pop(),start:0,end:0,legacy:true}]:[]);
-  lanes=Math.max(lanes,layers.length);
-  layers.forEach((layer,lane)=>{const start=group.start+Math.min(span,Math.max(0,layer.start||0)),end=group.start+Math.min(span,layer.end||span);if(end>start)clips.push({layer,lane,sceneIndex:group.index,start,end,groupStart:group.start,groupEnd:group.end});});
- }
- return{scenes,groups,clips,lanes,total};
+// 트랙 위치는 모두 타임라인 절대 초. 레이어/키프레임 시간만 그 조각 기준 상대 시간이다.
+import {clipEnd,totalDuration,videoClipAt,clipsAt} from './core.js';
+const bar=(clip,index)=>({clip,index,start:clip.start,end:clipEnd(clip),seconds:Math.max(0,Number(clip.duration)||0)});
+// 조각 하나가 품은 소재 레이어를 타임라인 절대 구간으로 편다. 기존 단일 asset 장면은 조각 전체를 덮는 레이어 하나로 본다.
+export function clipLayers(entry){const scene=entry.clip.scene||{},span=entry.seconds;
+ const layers=Array.isArray(scene.layers)?scene.layers:(scene.asset?[{id:'legacy',asset:scene.asset,name:scene.asset.split('/').pop(),start:0,end:0,legacy:true}]:[]);
+ return layers.map((layer,lane)=>{const start=entry.start+Math.min(span,Math.max(0,layer.start||0)),end=entry.start+Math.min(span,layer.end||span);
+  return{layer,lane,clipIndex:entry.index,start,end,clipStart:entry.start,clipEnd:entry.end};}).filter(c=>c.end>c.start);}
+export function timelineLayout(video,audio){
+ const clips=(video||[]).map(bar),takes=(audio||[]).map(bar);
+ const layers=clips.flatMap(clipLayers);
+ return{clips,takes,layers,lanes:Math.max(1,...layers.map(l=>l.lane+1)),total:totalDuration(video,audio)};
 }
-export function locateTime(layout,seconds){
- const time=Math.min(layout.total,Math.max(0,Number(seconds)||0));
- const scene=layout.scenes.find(s=>time<s.end)||layout.scenes.at(-1);
- return scene?{index:scene.index,local:time-scene.start,time}:null;
-}
+// 절대 시각 → 그 시점에 편집할 영상 조각과 조각 안에서의 시간. 빈 구간이면 null.
+export function locateTime(layout,seconds){const time=Math.min(layout.total,Math.max(0,Number(seconds)||0));
+ // 끝 시각은 어느 조각에도 안 걸리므로(끝은 열린 구간) 마지막 프레임을 보여 준다.
+ const hit=videoClipAt(layout.clips.map(c=>c.clip),time<layout.total?time:Math.max(0,time-1e-6));if(!hit)return null;
+ const index=layout.clips.findIndex(c=>c.clip===hit);
+ return{index,local:time-hit.start,time};}
+// 그 시점에 들려야 할 녹음 조각들.
+export const takesAt=(layout,seconds)=>clipsAt(layout.takes.map(t=>t.clip),seconds);

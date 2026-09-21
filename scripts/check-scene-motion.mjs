@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {COVER,easeOut,sceneEntrance,needsScrim,offsetAt,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec,sceneGroups,unusedAssetKeys} from '../dist/core.js';
+import {COVER,easeOut,sceneEntrance,needsScrim,clipRange,clipTimeAt,validScene,clipOutputSize,safeClipName,uniqueAssetKey,CLIP_CODECS,pickClipCodec,unusedAssetKeys} from '../dist/core.js';
 
 // 이미지 위에 제목을 얹는 배치에서만 어둡게 덮는다. 전체 이미지는 원본 밝기 그대로 나간다.
 assert.equal(needsScrim('full',true),false,'전체 이미지 배치는 어둡게 덮지 않는다');
@@ -40,16 +40,6 @@ assert.equal(sceneEntrance('slide',0).alpha,1,'슬라이드는 투명해지지 �
 // easeOut 은 0..1 을 벗어나지 않는다
 assert.equal(easeOut(0),0);assert.equal(easeOut(1),1);
 assert.equal(easeOut(-3),0);assert.equal(easeOut(9),1);
-// 타임라인에서 고른 장면이 영상 어디쯤인지
-const lens=[2,3.5,1.25,4];
-assert.equal(offsetAt(lens,0),0,'첫 장면은 영상 시작점이다');
-assert.equal(offsetAt(lens,1),2);
-assert.equal(offsetAt(lens,3),6.75);
-assert.equal(offsetAt(lens,4),10.75,'마지막 다음은 전체 길이다');
-assert.equal(offsetAt(lens,99),10.75,'범위를 넘어도 전체 길이를 넘지 않는다');
-assert.equal(offsetAt(lens,-2),0,'음수는 시작점으로 본다');
-assert.equal(offsetAt([],0),0);
-assert.equal(offsetAt([undefined,2],2),2,'녹음이 없는 문장은 0초로 센다');
 
 // 영상 소재에서 쓸 구간
 assert.deepEqual(clipRange({},10),{start:0,end:10,span:10},'구간을 안 정하면 영상 전체를 쓴다');
@@ -123,29 +113,8 @@ assert.equal(await pickClipCodec({width:640},async()=>{throw Error('지원 확�
 assert.equal((await pickClipCodec({width:640},async c=>{if(c.codec==='avc1.420028')throw Error('nope');return{supported:true};})).muxer,'vp9','터진 코덱은 건너뛴다');
 for(const option of CLIP_CODECS)assert.ok(['avc','hevc','vp9','av1'].includes(option.muxer),option.muxer+' 는 muxer 가 받는 이름이어야 한다');
 
-// 이어가기로 묶인 장면: 어느 장면을 쓰고, 그 장면이 시작한 지 얼마나 됐는지
-const groups=sceneGroups([{seconds:2},{seconds:3,continues:true},{seconds:1,continues:true},{seconds:4},{seconds:2,continues:true}]);
-assert.deepEqual(groups.map(g=>g.baseIndex),[0,0,0,3,3],'이어가는 문장은 앞 장면을 쓴다');
-assert.deepEqual(groups.map(g=>g.offset),[0,2,5,0,4],'이어가면 장면 시간이 계속 흐른다');
-assert.deepEqual(groups.map(g=>g.span),[6,6,6,6,6],'묶인 장면의 전체 길이는 구성원이 모두 같다');
-
-const plain=sceneGroups([{seconds:2},{seconds:3},{seconds:1}]);
-assert.deepEqual(plain.map(g=>g.baseIndex),[0,1,2],'이어가기를 안 쓰면 문장마다 새 장면이다');
-assert.deepEqual(plain.map(g=>g.offset),[0,0,0]);
-assert.deepEqual(plain.map(g=>g.span),[2,3,1]);
-
-assert.deepEqual(sceneGroups([{seconds:2,continues:true}]),[{baseIndex:0,offset:0,span:2}],'첫 문장은 이어갈 앞 장면이 없다');
-assert.deepEqual(sceneGroups([]),[]);
-assert.deepEqual(sceneGroups(),[]);
-assert.deepEqual(sceneGroups([{seconds:-3},{continues:true}]).map(g=>g.offset),[0,0],'음수와 빈 길이는 0 으로 본다');
-const all=sceneGroups([{seconds:1},{seconds:1,continues:true},{seconds:1,continues:true},{seconds:1,continues:true}]);
-assert.deepEqual(all.map(g=>g.baseIndex),[0,0,0,0],'끝까지 한 장면으로 이어갈 수 있다');
-assert.deepEqual(all.map(g=>g.offset),[0,1,2,3]);
-
-// 이어가기는 저장되고 복원된다
-assert.equal(validScene({id:1,continues:true}).continues,true);
-assert.equal(validScene({id:1,continues:false}).continues,undefined,'꺼져 있으면 저장하지 않는다');
-assert.equal(validScene({id:1}).continues,undefined);
+// 이어가기는 사라졌다 — 조각은 트랙 위 제 자리와 길이를 스스로 갖는다
+assert.equal(validScene({id:1,continues:true}).continues,undefined,'이어가기는 더 이상 장면 속성이 아니다');
 
 // 문장을 지운 뒤 아무도 쓰지 않는 소재는 정리하되, 잘라 둔 조각 보관함은 남긴다
 const keys=['assets/1_a.png','assets/2_b.mp4','clips/초록.mp4','clips/안 쓰는 조각.mp4'];
@@ -155,4 +124,4 @@ assert.deepEqual(unusedAssetKeys(keys,[undefined,null,'assets/2_b.mp4']),['asset
 assert.deepEqual(unusedAssetKeys([],['assets/1_a.png']),[]);
 assert.deepEqual(unusedAssetKeys(),[]);
 
-console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback, scene continuation groups, unused asset cleanup');
+console.log('PASS scene scrim only under overlaid text, slide from screen edge with fast start and slow close, previous scene held underneath while covering, timeline position offsets, video clip range, cut clip sizing, naming and codec fallback, unused asset cleanup');

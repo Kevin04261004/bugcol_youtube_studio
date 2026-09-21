@@ -11,11 +11,16 @@ const fail=(status,message)=>Object.assign(new Error(message),{status});
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 async function limitedBody(req,max){if(Number(req.headers.get('content-length'))>max)throw fail(413,'파일 조각이 너무 큽니다.');const reader=req.body?.getReader();if(!reader)return new Uint8Array();const chunks=[];let size=0;for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>max){await reader.cancel();throw fail(413,'요청 크기가 너무 큽니다.');}chunks.push(value);}const bytes=new Uint8Array(size);let off=0;for(const c of chunks){bytes.set(c,off);off+=c.length;}return bytes;}
 function validateManifest(doc){
- if(doc?.version!==1||typeof doc.name!=='string'||doc.name.length>200||!Array.isArray(doc.sentences)||doc.sentences.length>2000||!doc.assets||Array.isArray(doc.assets))throw fail(400,'작업 폴더 형식이 올바르지 않습니다.');
+ const v2=doc?.version===2;
+ if(![1,2].includes(doc?.version)||typeof doc.name!=='string'||doc.name.length>200||!Array.isArray(doc.sentences)||doc.sentences.length>2000||!doc.assets||Array.isArray(doc.assets))throw fail(400,'작업 폴더 형식이 올바르지 않습니다.');
+ if(v2&&(!Array.isArray(doc.video)||!Array.isArray(doc.audio)||doc.video.length>2000||doc.audio.length>2000))throw fail(400,'타임라인 트랙 형식이 올바르지 않습니다.');
  const parts=new Set(),ids=new Set();
  const file=f=>{if(!f||!Number.isInteger(f.size)||f.size<0||!Array.isArray(f.parts)||f.parts.length>2048||f.parts.length!==Math.ceil(f.size/MAX_PART))throw fail(400,'소재 정보 오류');for(const p of f.parts){if(!HASH.test(p))throw fail(400,'파일 ID 오류');parts.add(p);}};
+ const span=c=>{if(!Number.isFinite(c?.start)||c.start<0||c.start>86400||!Number.isFinite(c.duration)||c.duration<0||c.duration>86400)throw fail(400,'트랙 조각 시간 오류');};
  for(const [name,f]of Object.entries(doc.assets)){if(name.length>300||/(^|\/)\.\.(\/|$)|^\/|\\/.test(name))throw fail(400,'소재 경로 오류');file(f);}
- for(const s of doc.sentences){if(!Number.isInteger(s.id)||s.id<1||ids.has(s.id)||typeof s.text!=='string'||s.text.length>20000||!s.scene)throw fail(400,'문장 정보 오류');ids.add(s.id);if(s.audio){file(s.audio);if(!Number.isInteger(s.audio.samples)||s.audio.samples*4!==s.audio.size)throw fail(400,'녹음 정보 오류');}if(s.scene.asset&&!Object.hasOwn(doc.assets,s.scene.asset))throw fail(400,'장면 소재 누락');}
+ for(const s of doc.sentences){if(!Number.isInteger(s.id)||s.id<1||ids.has(s.id)||typeof s.text!=='string'||s.text.length>20000||(!v2&&!s.scene))throw fail(400,'문장 정보 오류');ids.add(s.id);if(s.audio){file(s.audio);if(!Number.isInteger(s.audio.samples)||s.audio.samples*4!==s.audio.size)throw fail(400,'녹음 정보 오류');}if(s.scene?.asset&&!Object.hasOwn(doc.assets,s.scene.asset))throw fail(400,'장면 소재 누락');}
+ if(v2){for(const c of doc.video){span(c);if(!c.scene)throw fail(400,'영상 조각 정보 오류');if(c.scene.asset&&!Object.hasOwn(doc.assets,c.scene.asset))throw fail(400,'장면 소재 누락');}
+  for(const c of doc.audio){span(c);if(!ids.has(Number(c.sentenceId)))throw fail(400,'녹음 조각의 문장 번호 오류');}}
  if(parts.size>10000)throw fail(413,'작업을 여러 폴더로 나누어 주세요.');return [...parts];
 }
 export async function api(req,env){

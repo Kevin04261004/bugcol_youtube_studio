@@ -6,7 +6,7 @@ export function editAudio(data,start,end,keep=false){const a=Math.max(0,Math.min
 export function trimAudio(data){const block=480,threshold=.008;let a=0,b=data.length;const rms=(s,e)=>{let sum=0;for(let i=s;i<e;i++)sum+=data[i]*data[i];return Math.sqrt(sum/(e-s));};while(a+block<b&&rms(a,a+block)<threshold)a+=block;while(b-block>a&&rms(b-block,b)<threshold)b-=block;if(b-a<=block)throw Error('음성이 감지되지 않아 원본을 유지했습니다.');return data.slice(Math.max(0,a-4800),Math.min(data.length,b+4800));}
 export function wavBytes(data){const bytes=new Uint8Array(44+data.length*2),v=new DataView(bytes.buffer);const str=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};str(0,'RIFF');v.setUint32(4,36+data.length*2,true);str(8,'WAVE');str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,RATE,true);v.setUint32(28,RATE*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,data.length*2,true);for(let i=0;i<data.length;i++){const s=Math.max(-1,Math.min(1,data[i]));v.setInt16(44+i*2,s<0?s*32768:s*32767,true);}return bytes;}
 export const pad=n=>String(n).padStart(3,'0');
-export function validScene(s){if(!s||!Number.isInteger(Number(s.id))||Number(s.id)<1)throw Error('장면 id는 1 이상의 문장 번호여야 합니다.');const out={id:Number(s.id)};for(const key of ['title','subtitle','asset']){if(s[key]!=null){if(typeof s[key]!=='string'||s[key].length>10000)throw Error('장면 텍스트 형식이 올바르지 않습니다.');out[key]=s[key];}}if(s.asset&&(/(^|\/)\.\.?(\/|$)|^\/|:|\\/.test(s.asset)))throw Error('장면 소재는 ZIP 내부의 상대 경로여야 합니다.');if(s.background!=null){if(!/^#[0-9a-f]{6}$/i.test(s.background))throw Error('배경색은 #171925 형식이어야 합니다.');out.background=s.background;}for(const [k,vals]of Object.entries({layout:['title','split','full'],motion:['none','fade','zoom','slide']})){if(s[k]!=null){if(!vals.includes(s[k]))throw Error('지원하지 않는 장면 '+k);out[k]=s[k];}}for(const k of ['clipStart','clipEnd']){if(s[k]!=null){const n=Number(s[k]);if(!Number.isFinite(n)||n<0||n>86400)throw Error('장면 '+k+' 는 0 이상 86400 이하의 초여야 합니다.');if(n>0)out[k]=n;}}if(out.clipEnd!=null&&out.clipEnd<=(out.clipStart||0))throw Error('장면 clipEnd 는 clipStart 보다 뒤여야 합니다.');if(s.captions!=null)out.captions=!!s.captions;if(s.continues)out.continues=true;if(s.layers!=null)out.layers=validateLayers(s.layers);if(s.duration!=null)out.duration=Math.max(.1,Math.min(600,Number(s.duration)||3));return out;}
+export function validScene(s){if(!s||!Number.isInteger(Number(s.id))||Number(s.id)<1)throw Error('장면 id는 1 이상의 문장 번호여야 합니다.');const out={id:Number(s.id)};for(const key of ['title','subtitle','asset']){if(s[key]!=null){if(typeof s[key]!=='string'||s[key].length>10000)throw Error('장면 텍스트 형식이 올바르지 않습니다.');out[key]=s[key];}}if(s.asset&&(/(^|\/)\.\.?(\/|$)|^\/|:|\\/.test(s.asset)))throw Error('장면 소재는 ZIP 내부의 상대 경로여야 합니다.');if(s.background!=null){if(!/^#[0-9a-f]{6}$/i.test(s.background))throw Error('배경색은 #171925 형식이어야 합니다.');out.background=s.background;}for(const [k,vals]of Object.entries({layout:['title','split','full'],motion:['none','fade','zoom','slide']})){if(s[k]!=null){if(!vals.includes(s[k]))throw Error('지원하지 않는 장면 '+k);out[k]=s[k];}}for(const k of ['clipStart','clipEnd']){if(s[k]!=null){const n=Number(s[k]);if(!Number.isFinite(n)||n<0||n>86400)throw Error('장면 '+k+' 는 0 이상 86400 이하의 초여야 합니다.');if(n>0)out[k]=n;}}if(out.clipEnd!=null&&out.clipEnd<=(out.clipStart||0))throw Error('장면 clipEnd 는 clipStart 보다 뒤여야 합니다.');if(s.captions!=null)out.captions=!!s.captions;if(s.layers!=null)out.layers=validateLayers(s.layers);if(s.duration!=null)out.duration=Math.max(.1,Math.min(600,Number(s.duration)||3));return out;}
 
 // Keep one PCM clock and one packet sequence across every sentence boundary.
 export function* audioPackets(clips, packetSize=1024){
@@ -40,7 +40,6 @@ export function sceneEntrance(motion,t,cover=COVER){const p=Math.min(1,Math.max(
  if(motion==='slide')return{alpha:1,shiftX:(1-easeOut(p,4))*1280,covers:p<1};
  return{alpha:easeOut(p),shiftX:0,covers:p<1};}
 export const needsScrim=(layout,hasMedia)=>!!hasMedia&&layout==='title';
-export const offsetAt=(durations,index)=>durations.slice(0,Math.max(0,index)).reduce((a,n)=>a+(n||0),0);
 // 장면이 영상 소재의 어느 구간을 쓰는지. clipEnd 가 없으면 소재 끝까지 쓴다.
 export function clipRange(scene,mediaDuration=0){const start=Math.max(0,Number(scene?.clipStart)||0);const raw=Number(scene?.clipEnd)||0,tail=Math.max(start,Number(mediaDuration)||0);const end=raw>start?(tail>start?Math.min(raw,tail):raw):tail;return{start,end,span:Math.max(0,end-start)};}
 // 장면 시간 t 일 때 영상 소재에서 읽을 위치. 구간이 짧으면 마지막 화면에서 멈춘다.
@@ -57,42 +56,59 @@ export const CLIP_CODECS=[{codec:'avc1.420028',muxer:'avc',extra:{avc:{format:'a
 export async function pickClipCodec(base,isSupported){for(const option of CLIP_CODECS){
  try{const result=await isSupported({...base,...option.extra,codec:option.codec});if(result?.supported)return option;}catch{}
 }return null;}
-// 이어가기로 묶인 장면 계산. 각 문장이 어느 장면을 쓰고, 그 장면이 시작한 지 얼마나 됐는지.
-export function sceneGroups(items){const list=(items||[]).map(it=>({continues:!!it?.continues,seconds:Math.max(0,Number(it?.seconds)||0)}));
- const out=list.map(()=>({baseIndex:0,offset:0,span:0}));let base=0,offset=0;
- list.forEach((it,i)=>{if(i===0||!it.continues){base=i;offset=0;}out[i].baseIndex=base;out[i].offset=offset;offset+=it.seconds;});
- const spans=new Map();list.forEach((it,i)=>spans.set(out[i].baseIndex,(spans.get(out[i].baseIndex)||0)+it.seconds));
- out.forEach(o=>{o.span=spans.get(o.baseIndex)||0;});return out;}
 // 어느 장면도 쓰지 않는 소재. 잘라 둔 조각(clips/)은 보관함이라 남긴다.
 export function unusedAssetKeys(keys,used,keep='clips/'){const live=new Set((used||[]).filter(Boolean));
  return (keys||[]).filter(k=>!String(k).startsWith(keep)&&!live.has(k));}
 
 // ── 독립 트랙(영상/오디오) 타임라인 ──────────────────────────────────
-// 문장에 묶이지 않는 영상 트랙 조각. scene 은 기존 title/layout/motion/layers 등 화면 구성을 그대로 담는다.
-export function newVideoClip(scene,start=0,duration=3,id){return{id:id||uid(),start:Math.max(0,Number(start)||0),duration:Math.max(.05,Number(duration)||3),scene};}
-// 문장 녹음이 얹히는 오디오 트랙 조각. sentenceId 로 대본/자막과 연결된다.
-export function newAudioClip(sentenceId,start=0,duration=0,text='',id){return{id:id||uid(),sentenceId,start:Math.max(0,Number(start)||0),duration:Math.max(0,Number(duration)||0),text:String(text||'')};}
 export const uid=()=>globalThis.crypto?.randomUUID?.()||'clip-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+export const MIN_CLIP=.05;
+// 영상 트랙 조각. 문장이 아니라 타임라인 위 절대 시각에 놓인다.
+// scene 은 기존 화면 구성(layers/asset/layout/motion…)을 그대로 담고, 레이어 시간은 이 조각 안에서의 상대 시간이다.
+export function newVideoClip(scene,start=0,duration=3,id){return{id:id||uid(),start:Math.max(0,Number(start)||0),duration:Math.max(MIN_CLIP,Number(duration)||3),scene};}
+// 내레이션 조각. 녹음 자체는 sentences[].audio 에 남고, 여기서는 어느 문장의 녹음을 어디에 얼마나 얹을지만 정한다.
+// offset 은 그 녹음의 어느 지점부터 쓰는지(앞을 잘라내도 원본 PCM 은 그대로 둔다).
+export function newAudioClip(sentenceId,start=0,duration=0,text='',id,offset=0){return{id:id||uid(),sentenceId,start:Math.max(0,Number(start)||0),duration:Math.max(0,Number(duration)||0),offset:Math.max(0,Number(offset)||0),text:String(text||'')};}
+export const clipEnd=c=>(Number(c?.start)||0)+(Number(c?.duration)||0);
 // 트랙 전체 길이. 빈 트랙은 0.
-export function trackEnd(clips){return (clips||[]).reduce((max,c)=>Math.max(max,(Number(c.start)||0)+(Number(c.duration)||0)),0);}
+export function trackEnd(clips){return (clips||[]).reduce((max,c)=>Math.max(max,clipEnd(c)),0);}
 // 영상+오디오 트랙을 합친 전체 영상 길이. 영상이 내레이션보다 짧아도 소리는 끝까지 들려야 하므로 둘 중 긴 쪽을 쓴다.
 export function totalDuration(video,audio){return Math.max(trackEnd(video),trackEnd(audio));}
-// 시각 t 를 덮는 조각들(시작 순). 겹치면 나중 것이 위, 즉 배열의 뒤가 화면 앞이라고 본다.
-export function clipsAt(clips,t){const time=Math.max(0,Number(t)||0);return (clips||[]).filter(c=>time>=c.start&&time<c.start+c.duration);}
-// 영상 트랙에서 t 시점에 보여줄 조각 하나(겹치면 가장 나중에 시작한 것).
+// 시각 t 를 덮는 조각들. 겹치면 배열 순서대로.
+export function clipsAt(clips,t){const time=Math.max(0,Number(t)||0);return (clips||[]).filter(c=>time>=c.start&&time<clipEnd(c));}
+// 영상 트랙에서 t 시점에 보여줄 조각 하나(겹치면 가장 나중에 시작한 것이 화면 앞).
 export function videoClipAt(clips,t){const hits=clipsAt(clips,t);return hits.length?hits.reduce((a,b)=>b.start>=a.start?b:a):null;}
+// 절대 시각 → 조각 번호와 그 조각 안에서의 시간. 빈 구간이면 null.
+export function locateClip(clips,t){const clip=videoClipAt(clips,t);if(!clip)return null;const index=(clips||[]).indexOf(clip);return{clip,index,local:Math.max(0,(Number(t)||0)-clip.start)};}
+// 트랙 맨 뒤(새 조각을 이어 붙일 자리).
+export const trackTail=clips=>trackEnd(clips);
+// 조각을 통째로 옮긴다. 타임라인 앞(0초)보다 앞으로는 못 간다.
+export function moveClip(clip,start){clip.start=Math.max(0,Number(start)||0);return clip;}
+// 조각 가장자리를 끌어 길이를 바꾼다. 시작 쪽을 당기면 쓰는 구간도 같이 밀려 내용이 제자리에 남는다.
+// limit 은 더 늘릴 수 없는 최대 길이(녹음 길이 등). 없으면 제한 없음.
+export function trimClip(clip,edge,time,limit=Infinity){
+ const t=Math.max(0,Number(time)||0),end=clipEnd(clip),max=Math.max(MIN_CLIP,Number(limit)||Infinity);
+ if(edge==='start'){
+  const start=Math.min(Math.max(0,t),end-MIN_CLIP),shift=start-clip.start;
+  if(clip.offset!=null&&clip.offset+shift<0)return clip;
+  clip.start=start;clip.duration=end-start;
+  if(clip.offset!=null)clip.offset=Math.max(0,clip.offset+shift);
+ }else clip.duration=Math.min(max,Math.max(MIN_CLIP,t-clip.start));
+ return clip;
+}
 // 옛 문장별 장면(version:1)을 독립 영상/오디오 트랙(version:2)으로 옮긴다.
-// 순서대로 이어 붙여 예전과 똑같이 재생되는 위치에 두고, 그 뒤로는 자유롭게 옮기고 자를 수 있다.
+// 순서대로 이어 붙여 예전과 똑같이 재생되는 자리에 두고, 그 뒤로는 자유롭게 옮기고 자를 수 있다.
 export function migrateProject(project){
  if(!project||project.version!==1||!Array.isArray(project.sentences))return project;
  const video=[],audio=[];let offset=0;
  for(const s of project.sentences){
-  const seconds=s?.audio?.length?s.audio.length/RATE:Math.max(.1,Number(s?.scene?.duration)||3);
-  if(!s.scene.continues||!video.length)video.push(newVideoClip(s.scene,offset,seconds,'v'+s.id));
+  const scene=s?.scene||{},seconds=s?.audio?.length?s.audio.length/RATE:Math.max(.1,Number(scene.duration)||3);
+  if(!scene.continues||!video.length)video.push(newVideoClip(scene,offset,seconds,'v'+s.id));
   else video.at(-1).duration+=seconds;
-  audio.push(newAudioClip(s.id,offset,seconds,s.text,'a'+s.id));
+  if(s?.audio?.length)audio.push(newAudioClip(s.id,offset,seconds,s.text,'a'+s.id));
   offset+=seconds;
  }
+ for(const clip of video)delete clip.scene.continues;
  return{...project,version:2,video,audio};
 }
 
