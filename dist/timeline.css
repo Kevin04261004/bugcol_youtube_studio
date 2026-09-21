@@ -1,31 +1,40 @@
 /* A single scroll surface keeps clips, narration and the ruler aligned. */
-#freeEditor #edScenes{display:none}
 #freeEditor .timeline-tools{flex-wrap:wrap}
 #freeEditor .track-scroll{max-height:360px;min-height:250px;overscroll-behavior-x:contain;scrollbar-color:#65717e #20252b}
 #edTracks .track-ruler{height:34px;position:sticky;top:0;z-index:5;background:#171b20;cursor:crosshair}
 #edTracks .timeline-rail{position:sticky;left:0;display:flex;align-items:center;box-sizing:border-box;width:130px;height:100%;padding:0 12px;background:#1c2127!important;border-right:1px solid #3b444e;z-index:4;font-size:11px;font-weight:500;color:#bec8d2}
 #edTracks .track-row{height:54px;background:repeating-linear-gradient(90deg,transparent 0,transparent 63px,#ffffff04 63px,#ffffff04 64px)}
-#edTracks .scene-track{height:56px}
-#freeEditor #edTracks .global-scene{position:absolute;top:5px;height:46px;border-radius:5px;background:#28313b;padding:4px 7px;text-align:left;display:grid;grid-template-columns:22px 1fr;column-gap:5px;overflow:hidden;border:1px solid #475361;box-sizing:border-box;min-width:0}
-#edTracks .global-scene b{grid-row:span 2;align-self:center;color:#aabacb;font-weight:500}
-#edTracks .global-scene span{white-space:nowrap;text-overflow:ellipsis;overflow:hidden;font-size:10px}
-#edTracks .global-scene small{font-size:9px;color:#9daebb}
-#freeEditor #edTracks .audio-bar{top:5px;height:44px;padding:4px 7px;background:#304438;border-color:#54735e;min-width:0;box-sizing:border-box}
-#edTracks .audio-bar>span{display:block;position:relative;z-index:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
-#edTracks .audio-bar.silent{background:#283b30;border-style:dashed}
-#edTracks .timeline-wave{width:100%;height:21px;display:block;stroke:#a7d6ac;stroke-width:.55;opacity:.75;fill:none}
+#edTracks .video-track,#edTracks .narration-track{height:58px}
+#freeEditor #edTracks .clip-bar,#freeEditor #edTracks .take-bar{position:absolute;top:5px;height:48px;box-sizing:border-box;border-radius:6px;display:flex;align-items:center;justify-content:space-between;overflow:hidden;cursor:grab;touch-action:none;padding:0;min-width:0;text-align:left}
+#freeEditor #edTracks .clip-bar{background:#2f3a48;border:1px solid #5a6a7d;color:#e4ecf5}
+#edTracks .clip-swatch{width:5px;align-self:stretch;flex:none;pointer-events:none}
+#freeEditor #edTracks .take-bar{background:#304438;border:1px solid #54735e;color:#cfe6cd}
+#freeEditor #edTracks .take-bar.silent{background:#283b30;border-style:dashed;opacity:.6}
+#edTracks .clip-bar>span,#edTracks .take-bar>span{flex:1;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;pointer-events:none}
+#edTracks .clip-bar small{padding-right:8px;font-size:9px;color:#aebbc9;pointer-events:none}
+#edTracks .clip-bar i,#edTracks .take-bar i,#edTracks .layer-bar i{width:10px;min-width:6px;height:100%;background:#ffffff26;cursor:ew-resize;flex:none;touch-action:none}
+#edTracks .clip-bar i:hover,#edTracks .take-bar i:hover{background:#c6f17e88}
+/* 파형은 막대 전체에 깔고 글자는 그 위에 얹는다. */
+#edTracks .timeline-wave{position:absolute;left:10px;right:10px;top:50%;transform:translateY(-50%);width:auto;height:30px;stroke:#a7d6ac;stroke-width:.55;opacity:.5;fill:none;pointer-events:none}
+#edTracks .take-bar>span{position:relative;z-index:1}
 #freeEditor #edTracks .layer-bar{top:7px;height:40px;min-width:0;border-radius:5px;background:#3c3452;border-color:#6b598c;color:#e0d4f8;box-sizing:border-box}
-#edTracks .layer-bar i{width:10px;min-width:6px}
 #edTracks .layer-bar.is-hidden{opacity:.4}
 #edTracks .layer-bar.is-locked{cursor:default}
-#freeEditor #edTracks .selected{border-color:#c6f17e;box-shadow:inset 0 0 0 1px #c6f17e;background:#3b482f}
+#freeEditor #edTracks .selected{border-color:#c6f17e;box-shadow:inset 0 0 0 1px #c6f17e}
 #edTracks #edPlayhead{top:26px;z-index:3;background:#d9f5b2}
-#edTracks .timeline-empty{position:absolute;left:150px;top:95px;max-width:330px;color:#8f9ba8;font-size:12px;pointer-events:none}
+#edTracks .timeline-empty,#edTracks .track-empty{position:absolute;left:150px;color:#8f9ba8;font-size:11px;pointer-events:none;margin:0}
+#edTracks .track-empty{top:19px}
+#edTracks .timeline-empty{top:150px;max-width:330px;font-size:12px}
+/* 녹음한 문장 가운데 아직 트랙에 없는 것. 끌어다 녹음 트랙에 놓는다. */
+#freeEditor .take-strip{display:flex;gap:8px;padding:10px 16px;overflow:auto;border-bottom:1px solid #34383f;align-items:center}
+#freeEditor .take-chip{display:flex;align-items:center;gap:6px;min-width:150px;max-width:220px;background:#263329;border-color:#46603f;color:#cfe6cd;cursor:grab;text-align:left}
+#freeEditor .take-chip p{margin:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#freeEditor .take-strip .ed-note{margin:0;font-size:10px}
 @media(max-width:800px){
  #freeEditor .timeline-tools h2{width:auto;margin-right:auto!important}
  #freeEditor .timeline-tools{gap:5px}
  #freeEditor .track-scroll{max-height:320px;min-height:250px}
- #edTracks .layer-bar i{width:16px;min-width:12px}
+ #edTracks .clip-bar i,#edTracks .take-bar i,#edTracks .layer-bar i{width:16px;min-width:12px}
  #edTracks .timeline-rail{font-size:10px}
  #freeEditor #edFullPlay{font-size:10px}
 }
