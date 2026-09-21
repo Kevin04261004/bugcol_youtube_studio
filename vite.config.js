@@ -1,0 +1,2 @@
+import {defineConfig} from 'vite';
+export default defineConfig({root:'dist',server:{host:'0.0.0.0',allowedHosts:['terminal.local']},plugins:[{name:'local-session',configureServer(server){server.middlewares.use((req,res,next)=>{if(req.url==='/api/session'){res.setHeader('Content-Type','application/json');res.end('{"user":null}');}else if(req.url?.startsWith('/api/')){res.statusCode=503;res.end('Cloud folders are available on the deployed site.');}else next();});}}]});
