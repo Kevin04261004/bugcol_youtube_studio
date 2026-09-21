@@ -82,6 +82,35 @@ export function sceneGroups(items){const list=(items||[]).map(it=>({continues:!!
 export function unusedAssetKeys(keys,used,keep='clips/'){const live=new Set((used||[]).filter(Boolean));
  return (keys||[]).filter(k=>!String(k).startsWith(keep)&&!live.has(k));}
 
+// \u2500\u2500 \uB3C5\uB9BD \uD2B8\uB799(\uC601\uC0C1/\uC624\uB514\uC624) \uD0C0\uC784\uB77C\uC778 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// \uBB38\uC7A5\uC5D0 \uBB36\uC774\uC9C0 \uC54A\uB294 \uC601\uC0C1 \uD2B8\uB799 \uC870\uAC01. scene \uC740 \uAE30\uC874 title/layout/motion/layers \uB4F1 \uD654\uBA74 \uAD6C\uC131\uC744 \uADF8\uB300\uB85C \uB2F4\uB294\uB2E4.
+export function newVideoClip(scene,start=0,duration=3,id){return{id:id||uid(),start:Math.max(0,Number(start)||0),duration:Math.max(.05,Number(duration)||3),scene};}
+// \uBB38\uC7A5 \uB179\uC74C\uC774 \uC5B9\uD788\uB294 \uC624\uB514\uC624 \uD2B8\uB799 \uC870\uAC01. sentenceId \uB85C \uB300\uBCF8/\uC790\uB9C9\uACFC \uC5F0\uACB0\uB41C\uB2E4.
+export function newAudioClip(sentenceId,start=0,duration=0,text='',id){return{id:id||uid(),sentenceId,start:Math.max(0,Number(start)||0),duration:Math.max(0,Number(duration)||0),text:String(text||'')};}
+export const uid=()=>globalThis.crypto?.randomUUID?.()||'clip-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+// \uD2B8\uB799 \uC804\uCCB4 \uAE38\uC774. \uBE48 \uD2B8\uB799\uC740 0.
+export function trackEnd(clips){return (clips||[]).reduce((max,c)=>Math.max(max,(Number(c.start)||0)+(Number(c.duration)||0)),0);}
+// \uC601\uC0C1+\uC624\uB514\uC624 \uD2B8\uB799\uC744 \uD569\uCE5C \uC804\uCCB4 \uC601\uC0C1 \uAE38\uC774. \uC601\uC0C1\uC774 \uB0B4\uB808\uC774\uC158\uBCF4\uB2E4 \uC9E7\uC544\uB3C4 \uC18C\uB9AC\uB294 \uB05D\uAE4C\uC9C0 \uB4E4\uB824\uC57C \uD558\uBBC0\uB85C \uB458 \uC911 \uAE34 \uCABD\uC744 \uC4F4\uB2E4.
+export function totalDuration(video,audio){return Math.max(trackEnd(video),trackEnd(audio));}
+// \uC2DC\uAC01 t \uB97C \uB36E\uB294 \uC870\uAC01\uB4E4(\uC2DC\uC791 \uC21C). \uACB9\uCE58\uBA74 \uB098\uC911 \uAC83\uC774 \uC704, \uC989 \uBC30\uC5F4\uC758 \uB4A4\uAC00 \uD654\uBA74 \uC55E\uC774\uB77C\uACE0 \uBCF8\uB2E4.
+export function clipsAt(clips,t){const time=Math.max(0,Number(t)||0);return (clips||[]).filter(c=>time>=c.start&&time<c.start+c.duration);}
+// \uC601\uC0C1 \uD2B8\uB799\uC5D0\uC11C t \uC2DC\uC810\uC5D0 \uBCF4\uC5EC\uC904 \uC870\uAC01 \uD558\uB098(\uACB9\uCE58\uBA74 \uAC00\uC7A5 \uB098\uC911\uC5D0 \uC2DC\uC791\uD55C \uAC83).
+export function videoClipAt(clips,t){const hits=clipsAt(clips,t);return hits.length?hits.reduce((a,b)=>b.start>=a.start?b:a):null;}
+// \uC61B \uBB38\uC7A5\uBCC4 \uC7A5\uBA74(version:1)\uC744 \uB3C5\uB9BD \uC601\uC0C1/\uC624\uB514\uC624 \uD2B8\uB799(version:2)\uC73C\uB85C \uC62E\uAE34\uB2E4.
+// \uC21C\uC11C\uB300\uB85C \uC774\uC5B4 \uBD99\uC5EC \uC608\uC804\uACFC \uB611\uAC19\uC774 \uC7AC\uC0DD\uB418\uB294 \uC704\uCE58\uC5D0 \uB450\uACE0, \uADF8 \uB4A4\uB85C\uB294 \uC790\uC720\uB86D\uAC8C \uC62E\uAE30\uACE0 \uC790\uB97C \uC218 \uC788\uB2E4.
+export function migrateProject(project){
+ if(!project||project.version!==1||!Array.isArray(project.sentences))return project;
+ const video=[],audio=[];let offset=0;
+ for(const s of project.sentences){
+  const seconds=s?.audio?.length?s.audio.length/RATE:Math.max(.1,Number(s?.scene?.duration)||3);
+  if(!s.scene.continues||!video.length)video.push(newVideoClip(s.scene,offset,seconds,'v'+s.id));
+  else video.at(-1).duration+=seconds;
+  audio.push(newAudioClip(s.id,offset,seconds,s.text,'a'+s.id));
+  offset+=seconds;
+ }
+ return{...project,version:2,video,audio};
+}
+
 `, type: "text/javascript; charset=utf-8" }, "/editor.js": { body: `import {newLayer,poseAt,hitLayer,clamp,uid} from './editor-engine.js';
 import {timelineLayout,locateTime} from './project-timeline.js';
 import {createProjectTimeline} from './timeline-view.js';
@@ -4785,7 +4814,7 @@ var LIVE_DEFAULT = "https://raw.githubusercontent.com/Kevin04261004/bugcol_youtu
 var LIVE_PATH = /^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json|svg|png|jpe?g|webp|woff2|ico|map)$/i;
 var LIVE_TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", map: "application/json; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", woff2: "font/woff2", ico: "image/x-icon" };
 var BUNDLED = typeof define_STATIC_FILES_default === "object" ? define_STATIC_FILES_default : {};
-var BUILD = true ? "3fbfa7376efe" : "dev";
+var BUILD = true ? "21574a54b9fa" : "dev";
 var liveBase = (env) => {
   const base = env?.LIVE_SOURCE ?? LIVE_DEFAULT;
   return base && base !== "off" ? base.replace(/\/$/, "") : null;

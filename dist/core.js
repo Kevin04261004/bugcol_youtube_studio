@@ -67,3 +67,32 @@ export function sceneGroups(items){const list=(items||[]).map(it=>({continues:!!
 export function unusedAssetKeys(keys,used,keep='clips/'){const live=new Set((used||[]).filter(Boolean));
  return (keys||[]).filter(k=>!String(k).startsWith(keep)&&!live.has(k));}
 
+// ── 독립 트랙(영상/오디오) 타임라인 ──────────────────────────────────
+// 문장에 묶이지 않는 영상 트랙 조각. scene 은 기존 title/layout/motion/layers 등 화면 구성을 그대로 담는다.
+export function newVideoClip(scene,start=0,duration=3,id){return{id:id||uid(),start:Math.max(0,Number(start)||0),duration:Math.max(.05,Number(duration)||3),scene};}
+// 문장 녹음이 얹히는 오디오 트랙 조각. sentenceId 로 대본/자막과 연결된다.
+export function newAudioClip(sentenceId,start=0,duration=0,text='',id){return{id:id||uid(),sentenceId,start:Math.max(0,Number(start)||0),duration:Math.max(0,Number(duration)||0),text:String(text||'')};}
+export const uid=()=>globalThis.crypto?.randomUUID?.()||'clip-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+// 트랙 전체 길이. 빈 트랙은 0.
+export function trackEnd(clips){return (clips||[]).reduce((max,c)=>Math.max(max,(Number(c.start)||0)+(Number(c.duration)||0)),0);}
+// 영상+오디오 트랙을 합친 전체 영상 길이. 영상이 내레이션보다 짧아도 소리는 끝까지 들려야 하므로 둘 중 긴 쪽을 쓴다.
+export function totalDuration(video,audio){return Math.max(trackEnd(video),trackEnd(audio));}
+// 시각 t 를 덮는 조각들(시작 순). 겹치면 나중 것이 위, 즉 배열의 뒤가 화면 앞이라고 본다.
+export function clipsAt(clips,t){const time=Math.max(0,Number(t)||0);return (clips||[]).filter(c=>time>=c.start&&time<c.start+c.duration);}
+// 영상 트랙에서 t 시점에 보여줄 조각 하나(겹치면 가장 나중에 시작한 것).
+export function videoClipAt(clips,t){const hits=clipsAt(clips,t);return hits.length?hits.reduce((a,b)=>b.start>=a.start?b:a):null;}
+// 옛 문장별 장면(version:1)을 독립 영상/오디오 트랙(version:2)으로 옮긴다.
+// 순서대로 이어 붙여 예전과 똑같이 재생되는 위치에 두고, 그 뒤로는 자유롭게 옮기고 자를 수 있다.
+export function migrateProject(project){
+ if(!project||project.version!==1||!Array.isArray(project.sentences))return project;
+ const video=[],audio=[];let offset=0;
+ for(const s of project.sentences){
+  const seconds=s?.audio?.length?s.audio.length/RATE:Math.max(.1,Number(s?.scene?.duration)||3);
+  if(!s.scene.continues||!video.length)video.push(newVideoClip(s.scene,offset,seconds,'v'+s.id));
+  else video.at(-1).duration+=seconds;
+  audio.push(newAudioClip(s.id,offset,seconds,s.text,'a'+s.id));
+  offset+=seconds;
+ }
+ return{...project,version:2,video,audio};
+}
+
