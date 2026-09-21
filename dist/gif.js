@@ -1,28 +1,31 @@
 // 애니메이션 GIF 인코더. GIF 는 프레임마다 256색 팔레트만 쓸 수 있어서
 // 색을 먼저 고르고(median cut) 그 색으로 픽셀을 바꾼 뒤 LZW 로 묶는다. 소리는 담지 못한다.
 export const MAX_COLORS=256;
-// 화면에서 고르게 뽑은 표본. 픽셀을 전부 보면 느려서 2만 개쯤만 본다.
-function sample(rgba,limit=20000){const count=rgba.length/4,step=Math.max(1,Math.floor(count/limit)),out=[];
+// 화면에서 고르게 뽑은 표본. 픽셀을 전부 보면 느려서 8천 개쯤만 본다(그 이상 봐도 색이 나아지지 않는다).
+function sample(rgba,limit=8000){const count=rgba.length/4,step=Math.max(1,Math.floor(count/limit)),out=[];
  for(let i=0;i<count;i+=step)out.push([rgba[i*4],rgba[i*4+1],rgba[i*4+2]]);
  return out;}
-const spread=box=>{const range=[0,1,2].map(c=>{let lo=255,hi=0;for(const p of box){if(p[c]<lo)lo=p[c];if(p[c]>hi)hi=p[c];}return hi-lo;});
- const widest=range.indexOf(Math.max(...range));return{channel:widest,size:range[widest]};};
+// 한 칸이 어느 축으로 얼마나 퍼져 있는지. 쪼갤 때마다 다시 세지 않도록 칸과 함께 들고 다닌다.
+function boxOf(pixels){let size=0,channel=0;
+ for(let c=0;c<3;c++){let lo=255,hi=0;for(const p of pixels){const v=p[c];if(v<lo)lo=v;if(v>hi)hi=v;}
+  if(hi-lo>size){size=hi-lo;channel=c;}}
+ return{pixels,channel,size};}
 // 색 공간을 가장 넓게 퍼진 축에서 반으로 계속 쪼개고, 각 칸의 평균색을 팔레트로 삼는다.
 export function quantizePalette(rgba,maxColors=MAX_COLORS){
- const limit=Math.max(2,Math.min(MAX_COLORS,maxColors));
- let boxes=[sample(rgba)].filter(b=>b.length);
- if(!boxes.length)return[[0,0,0]];
+ const limit=Math.max(2,Math.min(MAX_COLORS,maxColors)),first=sample(rgba);
+ if(!first.length)return[[0,0,0]];
+ const boxes=[boxOf(first)];
  while(boxes.length<limit){
   let pick=-1,best=0;
-  boxes.forEach((box,i)=>{if(box.length<2)return;const {size}=spread(box);if(size>best){best=size;pick=i;}});
+  for(let i=0;i<boxes.length;i++){const b=boxes[i];if(b.pixels.length>1&&b.size>best){best=b.size;pick=i;}}
   if(pick<0)break;
-  const box=boxes[pick],{channel}=spread(box);
-  box.sort((a,b)=>a[channel]-b[channel]);
-  const half=box.length>>1;
-  boxes.splice(pick,1,box.slice(0,half),box.slice(half));
+  const {pixels,channel}=boxes[pick];
+  pixels.sort((a,b)=>a[channel]-b[channel]);
+  const half=pixels.length>>1;
+  boxes.splice(pick,1,boxOf(pixels.slice(0,half)),boxOf(pixels.slice(half)));
  }
- return boxes.map(box=>{const sum=[0,0,0];for(const p of box)for(let c=0;c<3;c++)sum[c]+=p[c];
-  return sum.map(v=>Math.round(v/box.length));});}
+ return boxes.map(({pixels})=>{const sum=[0,0,0];for(const p of pixels)for(let c=0;c<3;c++)sum[c]+=p[c];
+  return sum.map(v=>Math.round(v/pixels.length));});}
 // 팔레트에서 가장 가까운 색 찾기. 5비트로 뭉뚱그려 캐시해 두면 프레임마다 다시 계산하지 않아도 된다.
 export function paletteMapper(palette){const cache=new Int16Array(32768).fill(-1);
  return(r,g,b)=>{const key=(r>>3)<<10|(g>>3)<<5|(b>>3);const hit=cache[key];if(hit>=0)return hit;
@@ -65,6 +68,8 @@ export function createGifWriter({width,height,loop=0,maxColors=MAX_COLORS}={}){
  const chunks=[];let parts=[],frames=0,bytes=0;
  const put=(...v)=>parts.push(...v),put16=v=>put(v&255,v>>8&255),text=s=>put(...[...s].map(c=>c.charCodeAt(0)));
  const flush=()=>{if(!parts.length)return;const block=Uint8Array.from(parts);bytes+=block.length;chunks.push(block);parts=[];};
+ // 이미지 데이터는 수십만 바이트까지 커진다. 펼쳐서 push 하면 인자가 너무 많아 터지므로 통째로 붙인다.
+ const putBytes=block=>{flush();bytes+=block.length;chunks.push(block);};
  text('GIF89a');put16(width);put16(height);put(0x70,0,0);
  text('\x21\xFF\x0B');text('NETSCAPE2.0');put(3,1);put16(loop);put(0);
  flush();
@@ -78,7 +83,7 @@ export function createGifWriter({width,height,loop=0,maxColors=MAX_COLORS}={}){
    put(0x21,0xF9,4,1<<2,hundredths&255,hundredths>>8&255,0,0);
    put(0x2C);put16(0);put16(0);put16(width);put16(height);put(0x80|depth-1);
    for(let i=0;i<slots;i++){const c=palette[i]||[0,0,0];put(c[0],c[1],c[2]);}
-   put(minCodeSize,...lzwEncode(indices,minCodeSize));
+   put(minCodeSize);putBytes(lzwEncode(indices,minCodeSize));
    frames++;flush();return bytes;},
   finish(){if(!frames)throw Error('GIF 로 만들 화면이 없습니다.');put(0x3B);flush();
    const out=new Uint8Array(bytes);let at=0;for(const c of chunks){out.set(c,at);at+=c.length;}return out;},

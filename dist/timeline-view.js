@@ -20,7 +20,7 @@ export function createProjectTimeline(root,h){
   el.onpointerdown=e=>{if(h.busy())return;const edge=e.target.dataset.edge;
    // 고르는 순간 트랙을 다시 그리면 끌고 있던 막대가 사라지므로, 먼저 끌기 상태로 잠근다.
    dragging=true;h.stop();
-   if(track==='video')h.select(entry.index);else h.pickTake(entry.clip.id);
+   if(track==='video')h.select(entry.index);
    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}
    const origin=e.clientX,start=entry.clip.start,span=entry.clip.duration,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
    const move=ev=>{const delta=(ev.clientX-origin)/zoom;

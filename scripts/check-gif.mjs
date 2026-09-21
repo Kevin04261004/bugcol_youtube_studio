@@ -89,4 +89,15 @@ const tiny=gifBytes([{rgba:frame(1).rgba,delay:.001}],{width:4,height:4});
 const tinyGce=[...tiny].findIndex((v,i)=>v===0x21&&tiny[i+1]===0xF9);
 assert.equal(tiny[tinyGce+4]|tiny[tinyGce+5]<<8,1,'더 잘게는 못 쪼개고 1/100초로 붙든다');
 
-console.log('PASS GIF LZW round trip with dictionary reset and sub-block splitting, median-cut palette, nearest-colour cache, and GIF89a assembly with looping and hundredth-second delays');
+// 큰 화면은 이미지 데이터가 수십만 바이트라, 펼쳐서 넘기면 인자 수 한계에 걸려 터진다
+const noisy=(w,h)=>{const a=new Uint8ClampedArray(w*h*4);
+ for(let i=0;i<w*h;i++){a[i*4]=(i*97)%256;a[i*4+1]=(i*53)%256;a[i*4+2]=(i*181)%256;a[i*4+3]=255;}return a;};
+const big=createGifWriter({width:640,height:360});
+assert.doesNotThrow(()=>big.addFrame(noisy(640,360),.1),'큰 프레임도 터지지 않는다');
+const bigGif=big.finish();
+assert.equal(String.fromCharCode(...bigGif.slice(0,6)),'GIF89a');
+assert.equal(bigGif.at(-1),0x3B);
+assert.equal(bigGif[6]|bigGif[7]<<8,640);assert.equal(bigGif[8]|bigGif[9]<<8,360);
+assert.ok(bigGif.length>30000,'압축이 잘 안 되는 화면은 실제로 큰 데이터를 만든다');
+
+console.log('PASS GIF LZW round trip with dictionary reset and sub-block splitting, median-cut palette, nearest-colour cache, and GIF89a assembly with looping and hundredth-second delays, including frames too large to pass by spread');

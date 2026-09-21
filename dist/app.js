@@ -5,7 +5,7 @@ import {createGifWriter} from './gif.js';
 import{createCloudEditor}from'./cloud.js';
 import{zip,unzipSync,strToU8,strFromU8}from'./vendor/fflate.js';
 import{Muxer,ArrayBufferTarget,FileSystemWritableFileStreamTarget}from'./vendor/mp4-muxer.js';
-import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec,unusedAssetKeys,newVideoClip,newAudioClip,migrateProject,totalDuration,trackEnd,trackTail,clipEnd,clipsAt,videoClipAt,locateClip,moveClip,trimClip,MIN_CLIP}from'./core.js';
+import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec,unusedAssetKeys,newVideoClip,newAudioClip,migrateProject,totalDuration,trackEnd,trackTail,clipEnd,clipsAt,videoClipAt,locateClip,moveClip,trimClip,mixNarration,MIN_CLIP}from'./core.js';
 const size=n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB';
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const emptyProject=()=>({version:2,name:'새로운 롱폼',sentences:[],video:[],audio:[],assets:{}});
@@ -62,7 +62,7 @@ function deleteSentence(i){
 function renderSelected(){const s=current();$('sentenceText').value=s?.text||'';$('sentenceText').disabled=!s;$('currentNumber').textContent=s?pad(s.id):'01';$('sentencePosition').textContent=s?`${selected+1} / ${project.sentences.length} 문장`:'문장을 선택하세요';$('recordClock').textContent=time(duration(s),true);$('cutStart').value='0';$('cutEnd').value=duration(s).toFixed(3);$('audioDuration').textContent=s?.audio?duration(s).toFixed(2)+'초':'녹음 없음';$('recordBadge').textContent=s?.audio?'녹음 완료':'녹음 준비';$('recordHint').textContent=s?.audio?'선택 구간을 듣고, 필요한 부분만 남기세요.':'마이크를 켜고 이야기를 시작해 보세요.';$('recordBtn').disabled=!s;$('playAudio').disabled=!s?.audio;$('undoAudio').disabled=!undo.has(s?.id);$('prevSentence').disabled=selected<=0;$('nextSentence').disabled=selected>=project.sentences.length-1;drawWave();renderInspector();renderTimeline();if(freeEditor)freeEditor.refresh();else drawPreview();}
 function render(){renderStats();renderList();renderSelected();}
 function selectSentence(i){if(recording||busy)return;const next=Math.max(0,Math.min(project.sentences.length-1,i));stopPlayback();selected=next;renderList();renderSelected();}
-function selectClip(i){if(recording||busy)return;clipIndex=Math.max(0,Math.min(project.video.length-1,i));const c=clip();if(c&&!c.scene.reviewed){c.scene.reviewed=true;scheduleSave();}renderStats();renderInspector();renderTimeline();}
+function selectClip(i){if(recording||busy)return;clipIndex=Math.max(0,Math.min(project.video.length-1,i));const c=clip();if(c&&!c.scene.reviewed){c.scene.reviewed=true;scheduleSave();}renderStats();renderInspector();renderTimeline();if(freeEditor)freeEditor.refresh();else drawPreview();}
 // 녹음을 타임라인에 올린다. 기본 자리는 녹음 트랙 맨 뒤라 예전처럼 순서대로 이어 붙지만, 올린 뒤에는 자유롭게 옮길 수 있다.
 function placeTake(s,at=null){if(!s?.audio?.length)return null;const c=newAudioClip(s.id,at??trackTail(project.audio),duration(s),s.text);project.audio.push(c);return c;}
 // 다시 녹음하면 타임라인에 올라간 조각도 새 녹음 전체를 쓰도록 되돌린다. 아직 안 올렸으면 맨 뒤에 올린다.
@@ -105,35 +105,42 @@ async function loadMedia(name,instance=''){if(!name)return null;const cacheKey=i
 function linesFor(g,text,maxWidth){const lines=[];for(const paragraph of String(text).split('\n')){let line='';for(const ch of paragraph){if(g.measureText(line+ch).width>maxWidth&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}return lines;}
 function textBlock(g,text,x,y,width,size,maxLines,color='#fff',align='left'){g.font=`600 ${size}px "Noto Sans KR",sans-serif`;g.textAlign=align;g.fillStyle=color;let lines=linesFor(g,text,width);if(lines.length>maxLines){lines=lines.slice(0,maxLines);lines[maxLines-1]=lines[maxLines-1].slice(0,-1)+'…';}lines.forEach((l,i)=>g.fillText(l,x,y+i*size*1.5));return lines.length*size*1.5;}
 function paintScene(g,shot){const v=shot.scene,t=shot.sceneTime,media=shot.media;g.fillStyle=v.background||'#171925';g.fillRect(0,0,1280,720);if(Array.isArray(v.layers)){drawLayers(g,v.layers,t,shot.layerMedia||new Map(),shot.editing);}else if(media){const mw=media.videoWidth||media.naturalWidth,mh=media.videoHeight||media.naturalHeight,x=v.layout==='split'?630:0,y=0,dw=v.layout==='split'?650:1280,dh=720,scale=Math.max(dw/mw,dh/mh)*(v.motion==='zoom'?1+.08*Math.min(1,t/shot.sceneSpan):1);g.save();g.beginPath();g.rect(x,y,dw,dh);g.clip();g.drawImage(media,x+(dw-mw*scale)/2,y+(dh-mh*scale)/2,mw*scale,mh*scale);if(needsScrim(v.layout,true)){g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x,y,dw,dh);}g.restore();}
-if(!Array.isArray(v.layers)&&(v.layout!=='full'||!media)){const split=v.layout==='split',x=split?65:100,maxW=split?500:1080;g.fillStyle='#a98aff';g.fillRect(x,143,44,5);g.font='500 17px "DM Sans",sans-serif';g.fillStyle='#bca9eb';g.textAlign='left';g.fillText('CHAPTER '+pad(shot.chapterId),x,191);const used=textBlock(g,v.title||shot.titleText,x,277,maxW,split?40:52,split?5:4);if(v.subtitle)textBlock(g,v.subtitle,x,Math.min(568,285+used),maxW,22,2,'#c1bacd');}
+if(!shot.bare&&!Array.isArray(v.layers)&&(v.layout!=='full'||!media)){const split=v.layout==='split',x=split?65:100,maxW=split?500:1080;g.fillStyle='#a98aff';g.fillRect(x,143,44,5);g.font='500 17px "DM Sans",sans-serif';g.fillStyle='#bca9eb';g.textAlign='left';g.fillText('CHAPTER '+pad(shot.chapterId),x,191);const used=textBlock(g,v.title||shot.titleText,x,277,maxW,split?40:52,split?5:4);if(v.subtitle)textBlock(g,v.subtitle,x,Math.min(568,285+used),maxW,22,2,'#c1bacd');}
 if(v.captions&&shot.captionText){g.font='500 24px "Noto Sans KR",sans-serif';const pages=linesFor(g,shot.captionText,1100),pairs=[];for(let i=0;i<pages.length;i+=2)pairs.push(pages.slice(i,i+2));const page=pairs[Math.min(pairs.length-1,Math.floor(Math.min(.999,shot.captionTime/shot.captionSpan)*pairs.length))]||[];const bh=page.length*36+24;g.fillStyle='#111015d9';g.fillRect(55,690-bh,1170,bh);g.textAlign='center';g.fillStyle='white';page.forEach((l,i)=>g.fillText(l,640,690-bh+35+i*36));}}
 function drawScene(canvas,shot,prev=null){const g=canvas.getContext('2d'),k=canvas.width/1280;g.save();g.scale(k,k);if(!shot){g.fillStyle='#171925';g.fillRect(0,0,1280,720);textBlock(g,'다음 이야기는 어떤 장면일까요?',640,338,1000,36,2,'#c6bed8','center');textBlock(g,'대본을 준비하면 이곳에 장면이 나타납니다.',640,394,1000,20,2,'#777386','center');g.restore();return;}
 const v=shot.scene,move=shot.still||shot.bare?{alpha:1,shiftX:0,covers:false}:sceneEntrance(v.motion,shot.sceneTime),under=move.covers&&prev?.scene;
 if(under)paintScene(g,prev);else{g.fillStyle=v.background||'#171925';g.fillRect(0,0,1280,720);}
 g.save();g.globalAlpha=move.alpha;g.translate(move.shiftX,0);paintScene(g,shot);g.restore();g.restore();}
 // 타임라인 절대 시각 t 의 한 컷. 영상 트랙과 녹음 트랙을 따로 찾아 합치므로 둘의 경계가 일치할 필요가 없다.
-function shotAt(t,media=null){const at=Math.max(0,t),c=videoClipAt(project.video,at),take=clipsAt(project.audio,at).at(-1);
- if(!c&&!take)return null;
- const scene=c?.scene||{background:'#171925',captions:true,layout:'full'},sceneTime=c?at-c.start:0;
- return{scene,clip:c,chapterId:c?project.video.indexOf(c)+1:1,titleText:scene.title||'',
+const EMPTY_SCENE={background:'#171925',captions:true,layout:'full'};
+// 조각 c 의 local 초 지점을 그린 한 컷. at 은 그 순간의 타임라인 절대 시각으로, 자막은 여기에 맞춰 고른다.
+// c 가 없으면 영상 트랙이 비는 구간이라 배경만 남긴다.
+function shotOf(c,local,at,media=null){const scene=c?.scene||EMPTY_SCENE,take=clipsAt(project.audio,at).at(-1);
+ return{scene,clip:c||null,chapterId:c?project.video.indexOf(c)+1:1,titleText:scene.title||'',
   assetName:Array.isArray(scene.layers)?null:scene.asset,media,
   layerMedia:new Map((scene.layers||[]).map(l=>[l.id,mediaCache.get(l.asset+'::'+l.id)?.el])),
-  sceneTime,sceneSpan:Math.max(.1,c?.duration||.1),
+  sceneTime:Math.max(0,local),sceneSpan:Math.max(.1,c?.duration||.1),
   captionText:take?.text||'',captionTime:take?at-take.start:0,captionSpan:Math.max(.1,take?.duration||.1),
-  // 영상 조각이 없는 구간은 배경만 남기고 등장 효과를 건너뛴다.
+  // 영상 조각이 없는 구간은 배경만 남기고 등장 효과도, 타이틀도 건너뛴다.
   bare:!c};}
+// 타임라인 절대 시각의 한 컷. 아직 아무것도 없는 프로젝트에서만 null 이다.
+function shotAt(t,media=null){const at=Math.max(0,t),c=videoClipAt(project.video,at);
+ if(!c&&!total())return null;
+ return shotOf(c,c?at-c.start:0,at,media);}
 async function prepareLayers(shot){if(!shot)return;shot.layerMedia=new Map();for(const l of shot.scene.layers||[])if(l.asset)shot.layerMedia.set(l.id,await loadMedia(l.asset,l.id));}
 async function seekLayers(shot){for(const l of shot.scene.layers||[]){const el=shot.layerMedia?.get(l.id);if(el instanceof HTMLVideoElement)await seekVideo(el,layerVideoTime(l,shot.sceneTime,el.duration));}}
 let previewing=false;
 let clipUrl=null,clipAsset=null,cutUrl=null,cutting=false,cutCancelled=false;
 const clipStart=i=>project.video[i]?.start||0;
 // 녹음 트랙 전체를 하나의 PCM 으로 섞는다. 조각끼리 겹치면 더해지고, 빈 구간은 무음이다.
-function mixNarration(from=0,until=total()){const length=Math.max(0,Math.round((until-from)*RATE)),out=new Float32Array(length);
- for(const c of project.audio){const take=takeOf(c);if(!take?.length)continue;
-  const head=Math.round((c.start-from)*RATE),skip=Math.round((c.offset||0)*RATE),n=Math.min(Math.round(c.duration*RATE),take.length-skip);
-  for(let i=Math.max(0,-head);i<n;i++){const at=head+i;if(at>=length)break;out[at]+=take[skip+i];}}
- for(let i=0;i<length;i++)out[i]=Math.max(-1,Math.min(1,out[i]));
- return out;}
+const mixHere=(from,length)=>mixNarration(project.audio,takeOf,from,length);
+function* narrationChunks(from,until,seconds=1){const total=samplesBetween(from,until),step=Math.max(1,Math.round(seconds*RATE));
+ for(let at=0;at<total;at+=step)yield mixHere(from+at/RATE,Math.min(step,total-at));}
+const samplesBetween=(from,until)=>Math.max(0,Math.round((until-from)*RATE));
+// 미리보기용 한 덩어리. AudioBuffer 는 통짜로 받아야 해서 채널에 바로 이어 붙인다.
+function narrationBuffer(from,end){const b=ctx.createBuffer(1,Math.max(1,samplesBetween(from,end)),RATE);
+ let at=0;for(const chunk of narrationChunks(from,end)){if(!chunk.length)continue;b.copyToChannel(chunk,0,at);at+=chunk.length;}
+ return b;}
 async function drawAt(t,still=true){const shot=shotAt(t);if(!shot)return null;shot.still=still;
  await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);
  if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));
@@ -145,7 +152,7 @@ let drawVersion=0;async function drawPreview(){if(freeEditor){freeEditor.paint()
   drawScene($('preview'),shot);$('previewTime').textContent=time(at)+' / '+time(total());
  }catch(e){toast(e.message);drawScene($('preview'),shotAt(at));}}
 async function previewAll(){if(busy||recording)return;if(previewing){stopPlayback();return;}const end=total();if(!end)return;stopPlayback();const token=previewToken;await audioContext();previewing=true;if($('edFullPlay'))$('edFullPlay').textContent='■ 전체 정지';
- try{const data=mixNarration(0,end),b=ctx.createBuffer(1,Math.max(1,data.length),RATE);b.copyToChannel(data,0);
+ try{const b=narrationBuffer(0,end);
   const src=ctx.createBufferSource();src.buffer=b;src.connect(ctx.destination);audioSource=src;const began=ctx.currentTime;src.start();
   await new Promise(resolve=>{const tick=async()=>{if(token!==previewToken)return resolve();const t=Math.min(ctx.currentTime-began,end);
    try{const shot=await drawAt(t,false);if(token!==previewToken)return resolve();
@@ -201,7 +208,7 @@ async function renderCompatibleVideo(want=''){
  try{await audioContext();await document.fonts.ready;try{wake=await navigator.wakeLock?.request('screen');}catch{}dest=ctx.createMediaStreamDestination();stream=canvas.captureStream(getFrameRate());for(const track of dest.stream.getAudioTracks())stream.addTrack(track);
  const chunks=[];let recordingError=null;rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:width===1920?6500000:3500000,audioBitsPerSecond:128000});rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};rec.onerror=e=>{recordingError=e.error||Error('영상 인코딩 실패');};const done=new Promise(resolve=>rec.onstop=resolve);
  const end=total(),first=await drawAt(0,false);drawScene(canvas,first);rec.start(1000);
- const data=mixNarration(0,end),b=ctx.createBuffer(1,Math.max(1,data.length),RATE);b.copyToChannel(data,0);source=ctx.createBufferSource();source.buffer=b;source.connect(dest);const began=ctx.currentTime;source.start();
+ const b=narrationBuffer(0,end);source=ctx.createBufferSource();source.buffer=b;source.connect(dest);const began=ctx.currentTime;source.start();
  let lastClip=first?.clip||null,lastShot=first,prev=null;
  while(ctx.currentTime-began<end){if(renderCancelled)throw Error('렌더링을 취소했습니다.');if(recordingError)throw recordingError;
   const t=ctx.currentTime-began,shot=shotAt(t);
@@ -251,7 +258,7 @@ async function renderMp4(){if(busy||recording)return;if(!total())return toast('�
  if(format==='gif')return renderGif();
  if(format==='webm')return renderCompatibleVideo('webm');
  if(!globalThis.VideoEncoder||!globalThis.AudioEncoder)return renderCompatibleVideo();let fileHandle=null,writer=null,ve=null,ae=null,wakeLock=null;renderCancelled=false;stopPlayback();const width=+$('resolution').value,height=width*9/16;try{setBusy(true);const videoConfig={codec:'avc1.420028',width,height,bitrate:width===1920?6500000:3500000,framerate:getFrameRate(),latencyMode:'realtime',avc:{format:'avc'}},audioConfig={codec:'mp4a.40.2',sampleRate:RATE,numberOfChannels:1,bitrate:128000};const [vs,as]=await Promise.all([VideoEncoder.isConfigSupported(videoConfig),AudioEncoder.isConfigSupported(audioConfig)]);if(!vs.supported||!as.supported)return await renderCompatibleVideo();if(globalThis.showSaveFilePicker){try{fileHandle=await showSaveFilePicker({suggestedName:fileName()+'.mp4',types:[{description:'MP4 영상',accept:{'video/mp4':['.mp4']}}]});}catch(e){if(e.name==='AbortError')return;fileHandle=null;}}if(!fileHandle&&total()*(videoConfig.bitrate+128000)/8>700*1024*1024)throw Error('긴 영상은 직접 파일 저장이 가능한 PC Chrome·Edge에서 렌더링하세요.');if(fileHandle)writer=await fileHandle.createWritable();try{wakeLock=await navigator.wakeLock?.request('screen');}catch{}const target=writer?new FileSystemWritableFileStreamTarget(writer):new ArrayBufferTarget(),muxer=new Muxer({target,video:{codec:'avc',width,height,frameRate:getFrameRate()},audio:{codec:'aac',numberOfChannels:1,sampleRate:RATE},fastStart:false,firstTimestampBehavior:'offset'});let encoderError=null;ve=new VideoEncoder({output:(chunk,meta)=>{try{muxer.addVideoChunk(chunk,meta);}catch(e){encoderError=e;}},error:e=>encoderError=e});ae=new AudioEncoder({output:(chunk,meta)=>{try{muxer.addAudioChunk(chunk,meta);}catch(e){encoderError=e;}},error:e=>encoderError=e});ve.configure(videoConfig);ae.configure(audioConfig);const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;await document.fonts.ready;$('renderProgress').hidden=false;$('cancelRender').hidden=false;$('renderProgress').value=0;let sampleOffset=0,frame=0;
-const packets=audioPackets([mixNarration(0,total())]);let packet=packets.next();
+const packets=audioPackets(narrationChunks(0,total()));let packet=packets.next();
 const drain=async(encoder,limit)=>{while(encoder.encodeQueueSize>limit){if(renderCancelled)throw Error('렌더링을 취소했습니다.');if(encoderError)throw encoderError;await new Promise(resolve=>setTimeout(resolve,1));}};
 const encodeAudioUntil=async(timeUs)=>{while(!packet.done&&packet.value.timestamp<timeUs){if(encoderError)throw encoderError;const {data,timestamp}=packet.value;const ad=new AudioData({format:'f32',sampleRate:RATE,numberOfFrames:data.length,numberOfChannels:1,timestamp,data});try{ae.encode(ad);}finally{ad.close();}packet=packets.next();await drain(ae,32);}};
 const end=total(),frameTotal=Math.ceil(end*getFrameRate()),started=performance.now();let prev=null,lastClip=null,lastShot=null;
@@ -305,7 +312,7 @@ function renderClips(){
   info.append(name,meta);
   const acts=document.createElement('div');acts.className='clip-item-actions';
   const use=document.createElement('button');use.className='primary';
-  use.textContent='타임라인 끝에 올리기';use.onclick=()=>useClip(key);
+  use.textContent='타임라인 끝에 올리기';use.onclick=()=>useClip(key).catch(e=>toast(e.message));
   const dl=document.createElement('button');dl.className='text-btn';dl.textContent='내려받기';
   dl.onclick=()=>download(project.assets[key],clipLabel(key));
   const del=document.createElement('button');del.className='text-btn danger';del.textContent='삭제';
@@ -463,14 +470,14 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  trim:(track,id,edge,at)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)trimClip(c,edge,at,track==='audio'?takeRoom(c):Infinity);},
  dropTake:(sentenceId,start)=>{const s=sentenceById(sentenceId);if(!s?.audio?.length)return toast('먼저 이 문장을 녹음하세요.');placeTake(s,start);changed();render();},
  removeTake:id=>{project.audio=project.audio.filter(c=>c.id!==id);changed();render();},
- async startTimelineAudio(from){await audioContext();const end=total();const data=mixNarration(from,end),b=ctx.createBuffer(1,Math.max(1,data.length),RATE);b.copyToChannel(data,0);
+ async startTimelineAudio(from){await audioContext();const b=narrationBuffer(from,total());
   const source=ctx.createBufferSource();source.buffer=b;source.connect(ctx.destination);timelineSources.push(source);const begins=ctx.currentTime+.04;source.start(begins);
   return()=>Math.max(from,from+ctx.currentTime-begins);},
- async draw(t,editing){const version=++editorDrawVersion,shot=shotAt(t);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));if(version===editorDrawVersion)drawScene($('preview'),shot);},
+ async draw(at,editing){const version=++editorDrawVersion,c=clip(),inside=c&&at>=c.start&&at<clipEnd(c);
+  const shot=inside?shotOf(c,at-c.start,at):shotAt(at);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));if(version===editorDrawVersion)drawScene($('preview'),shot);},
  empty:()=>drawScene($('preview'),null),addScene:addFreeScene,deleteScene:()=>deleteClip(clipIndex),
  reorder:(i,j)=>{const a=project.video[i],b=project.video[j];if(!a||!b)return;const start=a.start;moveClip(a,b.start);moveClip(b,start);project.video.sort((x,y)=>x.start-y.start);clipIndex=project.video.indexOf(a);changed();render();},select:selectClip,
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
- prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},
- playAudio:async t=>{const c=project.audio.find(x=>x.sentenceId===clip()?.sentenceId)||project.audio[0];const take=takeOf(c);if(!take)return;await audioContext();const b=ctx.createBuffer(1,take.length,RATE);b.copyToChannel(take,0);audioSource=ctx.createBufferSource();audioSource.buffer=b;audioSource.connect(ctx.destination);audioSource.start(0,t);},visible:()=>tab==='scenes'
+ prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
 });
 await loadSaved();switchTab('scenes');registerTools();cloud.init();

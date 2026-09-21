@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {newVideoClip,newAudioClip,trackEnd,totalDuration,clipsAt,videoClipAt,locateClip,moveClip,trimClip,migrateProject,MIN_CLIP,RATE} from '../dist/core.js';
+import {newVideoClip,newAudioClip,trackEnd,totalDuration,clipsAt,videoClipAt,locateClip,moveClip,trimClip,migrateProject,mixNarration,MIN_CLIP,RATE} from '../dist/core.js';
 
 // 빈 트랙은 길이 0
 assert.equal(trackEnd([]),0);
@@ -84,4 +84,44 @@ assert.equal(migrateProject(null),null);
 assert.equal(migrateProject({version:1,sentences:null}).sentences,null);
 assert.doesNotThrow(()=>migrateProject({version:1,sentences:[{id:1,text:'장면 없음'}]}),'scene 이 없는 문장도 옮길 수 있다');
 
-console.log('PASS independent video/audio track clips, gap/overlap lookup, clip move and edge trim with narration offset, longer-track total duration, and version:1 scene-per-sentence to version:2 track migration');
+
+// ── 녹음 트랙 섞기 ────────────────────────────────────────────────
+const tone=(n,v)=>Float32Array.from({length:n},()=>v);
+const takes={a:tone(RATE,.5),b:tone(RATE,.25)};
+const takeFor=c=>takes[c.sentenceId]||null;
+const at=(buf,seconds)=>buf[Math.round(seconds*RATE)];
+
+// 조각이 놓인 자리에만 소리가 나고 그 사이는 무음이다
+const spaced=[newAudioClip('a',0,1,'','c1'),newAudioClip('b',2,1,'','c2')];
+const mixed=mixNarration(spaced,takeFor,0,RATE*3);
+assert.equal(mixed.length,RATE*3);
+assert.equal(at(mixed,.5),.5,'첫 조각 자리에서는 그 녹음이 들린다');
+assert.equal(at(mixed,1.5),0,'조각 사이는 무음');
+assert.equal(at(mixed,2.5),.25,'뒤 조각도 제 자리에서 들린다');
+
+// 겹치면 더해진다
+assert.equal(at(mixNarration([newAudioClip('a',0,1),newAudioClip('b',0,1)],takeFor,0,RATE),.5),.75,'겹친 녹음은 더해진다');
+// 더한 값이 범위를 넘으면 잘린다
+const loud=[newAudioClip('a',0,1),newAudioClip('a',0,1),newAudioClip('a',0,1)];
+assert.equal(at(mixNarration(loud,takeFor,0,RATE),.5),1,'세 번 겹쳐도 1을 넘지 않는다');
+
+// duration 은 뒤를 자르고, offset 은 녹음 앞쪽을 건너뛴다
+const half=mixNarration([newAudioClip('a',0,.5)],takeFor,0,RATE);
+assert.equal(at(half,.25),.5);assert.equal(at(half,.75),0,'조각 길이를 넘어선 뒤는 들리지 않는다');
+const skipped=mixNarration([newAudioClip('a',0,1,'','c',.5)],takeFor,0,RATE);
+assert.equal(at(skipped,.25),.5,'앞을 건너뛰어도 남은 부분은 들린다');
+assert.equal(at(skipped,.75),0,'녹음이 모자라는 뒷부분은 무음');
+
+// 잘라 내어 가져가기 — 어디서부터 몇 샘플이든 같은 자리의 소리가 나온다
+const whole=mixNarration(spaced,takeFor,0,RATE*3);
+let joined=new Float32Array(RATE*3),cursor=0;
+for(let s=0;s<3;s++){const part=mixNarration(spaced,takeFor,s,RATE);joined.set(part,cursor);cursor+=part.length;}
+assert.deepEqual([...joined],[...whole],'1초씩 나눠 섞어도 한 번에 섞은 것과 같다');
+// 딱 떨어지지 않는 지점에서 잘라도 어긋나지 않는다
+const oddStart=mixNarration(spaced,takeFor,.3,RATE);
+assert.equal(oddStart[0],whole[Math.round(.3*RATE)],'중간에서 시작해도 같은 자리의 소리다');
+
+assert.equal(mixNarration([],takeFor,0,10).length,10,'녹음이 없으면 무음');
+assert.equal(mixNarration(null,takeFor,0,0).length,0);
+
+console.log('PASS independent video/audio track clips, gap/overlap lookup, clip move and edge trim with narration offset, longer-track total duration, and version:1 scene-per-sentence to version:2 track migration, and narration mixing with overlap, trim and chunked reads');

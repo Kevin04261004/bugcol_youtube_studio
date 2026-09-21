@@ -96,6 +96,16 @@ export function trimClip(clip,edge,time,limit=Infinity){
  }else clip.duration=Math.min(max,Math.max(MIN_CLIP,t-clip.start));
  return clip;
 }
+// 녹음 트랙을 PCM 한 덩어리로 섞는다. from 초부터 length 샘플만큼.
+// takeFor 는 조각이 쓰는 녹음을 돌려준다. 조각이 겹치면 더해지고, 아무도 없는 구간은 무음이다.
+export function mixNarration(clips,takeFor,from=0,length=0){const out=new Float32Array(Math.max(0,length));
+ for(const c of clips||[]){const take=takeFor(c);if(!take?.length)continue;
+  const head=Math.round((c.start-from)*RATE),skip=Math.max(0,Math.round((c.offset||0)*RATE));
+  const n=Math.min(Math.round(c.duration*RATE),take.length-skip);
+  for(let i=Math.max(0,-head);i<n;i++){const at=head+i;if(at>=out.length)break;out[at]+=take[skip+i];}}
+ // 겹쳐 더하다 보면 범위를 넘을 수 있어 잘라 둔다.
+ for(let i=0;i<out.length;i++)out[i]=Math.max(-1,Math.min(1,out[i]));
+ return out;}
 // 옛 문장별 장면(version:1)을 독립 영상/오디오 트랙(version:2)으로 옮긴다.
 // 순서대로 이어 붙여 예전과 똑같이 재생되는 자리에 두고, 그 뒤로는 자유롭게 옮기고 자를 수 있다.
 export function migrateProject(project){
