@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {quantizePalette,paletteMapper,indexPixels,lzwEncode,gifBytes,createGifWriter,MAX_COLORS} from '../dist/gif.js';
+import {quantizePalette,paletteMapper,indexPixels,lzwEncode,gifBytes,createGifWriter,decodeGif,gifFrameAt,MAX_COLORS} from '../dist/gif.js';
 
 // 명세대로 따로 쓴 해독기. 인코더와 짝을 맞춰 보며 진짜 GIF 바이트인지 확인한다.
 function lzwDecode(bytes,minCodeSize){
@@ -100,4 +100,63 @@ assert.equal(bigGif.at(-1),0x3B);
 assert.equal(bigGif[6]|bigGif[7]<<8,640);assert.equal(bigGif[8]|bigGif[9]<<8,360);
 assert.ok(bigGif.length>30000,'압축이 잘 안 되는 화면은 실제로 큰 데이터를 만든다');
 
-console.log('PASS GIF LZW round trip with dictionary reset and sub-block splitting, median-cut palette, nearest-colour cache, and GIF89a assembly with looping and hundredth-second delays, including frames too large to pass by spread');
+
+// ── 읽기 ────────────────────────────────────────────────────────────
+// 내보낸 GIF 를 다시 읽으면 같은 화면이 나와야 한다
+const solid=(w,h,c)=>{const a=new Uint8ClampedArray(w*h*4);
+ for(let i=0;i<w*h;i++){a[i*4]=c[0];a[i*4+1]=c[1];a[i*4+2]=c[2];a[i*4+3]=255;}return a;};
+const three=gifBytes([{rgba:solid(8,6,[200,20,30]),delay:.1},{rgba:solid(8,6,[20,200,30]),delay:.2},{rgba:solid(8,6,[20,30,200]),delay:.3}],{width:8,height:6});
+const back=decodeGif(three);
+assert.equal(back.width,8);assert.equal(back.height,6);
+assert.equal(back.frames.length,3,'세 장을 그대로 읽는다');
+assert.deepEqual([...back.frames.map(f=>f.delay)],[.1,.2,.3],'머무는 시간도 살아남는다');
+assert.ok(Math.abs(back.duration-.6)<1e-9);
+for(const [i,want] of [[0,[200,20,30]],[1,[20,200,30]],[2,[20,30,200]]])
+ assert.deepEqual([...back.frames[i].rgba.slice(0,4)],[...want,255],`${i}번째 장의 색이 같다`);
+
+// 시간에 따라 프레임 고르기 — 끝나면 처음으로 돌아간다
+const pick=t=>back.frames.indexOf(gifFrameAt(back,t));
+assert.equal(pick(0),0);assert.equal(pick(.05),0);
+assert.equal(pick(.1),1,'0.1초가 지나면 둘째 장');
+assert.equal(pick(.29),1);assert.equal(pick(.31),2);
+assert.equal(pick(back.duration),0,'한 바퀴 돌면 처음으로');
+assert.equal(pick(back.duration+.05),0);assert.equal(pick(back.duration+.15),1,'두 바퀴째도 같은 순서');
+assert.equal(pick(-.05),2,'뒤로 가도 마지막 장을 준다');
+assert.equal(gifFrameAt({frames:[{rgba:new Uint8ClampedArray(4),delay:.1}],duration:.1},99).delay,.1,'한 장짜리는 늘 그 장');
+
+// 진짜 GIF 파일 구조 — 손으로 짠 두 장짜리(투명·지우기 포함)
+const bytes=a=>Uint8Array.from(a);
+const lzwOf=(indices,min)=>[...lzwEncode(Uint8Array.from(indices),min)];
+const hand=bytes([
+ 0x47,0x49,0x46,0x38,0x39,0x61, 2,0, 2,0, 0xF1,0,0,           // 2x2, 전역 팔레트 4색
+ 255,0,0, 0,255,0, 0,0,255, 255,255,255,
+ 0x21,0xF9,4, 1<<2|1, 10,0, 3, 0,                              // 지연 0.1초, 3번 색은 투명
+ 0x2C, 0,0, 0,0, 2,0, 2,0, 0,                                  // 전체 화면 이미지
+ 2,...lzwOf([0,1,2,3],2),
+ 0x21,0xF9,4, 2<<2, 25,0, 0, 0,                                // 0.25초, 끝나면 그 자리 지우기
+ 0x2C, 0,0, 0,0, 1,0, 1,0, 0,                                  // 왼쪽 위 한 칸만
+ 2,...lzwOf([1],2),
+ 0x3B]);
+const two=decodeGif(hand);
+assert.equal(two.frames.length,2);
+assert.deepEqual([...two.frames.map(f=>f.delay)],[.1,.25]);
+assert.deepEqual([...two.frames[0].rgba.slice(0,4)],[255,0,0,255],'첫 칸은 빨강');
+assert.deepEqual([...two.frames[0].rgba.slice(12,16)],[0,0,0,0],'투명으로 지정된 칸은 비어 있다');
+assert.deepEqual([...two.frames[1].rgba.slice(0,4)],[0,255,0,255],'둘째 장은 첫 칸만 초록으로 덮는다');
+assert.deepEqual([...two.frames[1].rgba.slice(4,8)],[0,255,0,255],'덮지 않은 칸은 앞 장이 남는다');
+
+// 1/100초 단위가 0이면 브라우저 관행대로 0.1초로 본다
+const zero=bytes([...hand.slice(0,13+12),0x21,0xF9,4,0,0,0,0,0,0x2C,0,0,0,0,2,0,2,0,0,2,...lzwOf([0,0,0,0],2),0x3B]);
+assert.equal(decodeGif(zero).frames[0].delay,.1,'0은 최대한 빠르게라는 뜻이라 0.1초로 늦춘다');
+
+assert.throws(()=>decodeGif(bytes([1,2,3,4,5,6,7,8])),/GIF 파일이 아닙니다/);
+assert.throws(()=>decodeGif(bytes([0x47,0x49,0x46,0x38,0x39,0x61,1,0,1,0,0,0,0,0x3B])),/읽을 화면이 없습니다/);
+
+
+// 너무 크거나 긴 GIF 는 메모리를 삼키기 전에 막는다
+const huge=(()=>{const w=2000,h=2000,head=[0x47,0x49,0x46,0x38,0x39,0x61,w&255,w>>8,h&255,h>>8,0xF0,0,0, 0,0,0, 255,255,255];
+ const body=[];for(let i=0;i<30;i++)body.push(0x2C,0,0,0,0,w&255,w>>8,h&255,h>>8,0,2,...lzwOf(new Array(w*h).fill(i%2),2));
+ return Uint8Array.from([...head,...body,0x3B]);})();
+assert.throws(()=>decodeGif(huge),/너무 크거나 깁니다/,'메모리를 다 쓰기 전에 멈춘다');
+
+console.log('PASS GIF LZW round trip with dictionary reset and sub-block splitting, median-cut palette, nearest-colour cache, and GIF89a assembly with looping and hundredth-second delays, including frames too large to pass by spread, plus decoding back to frames with transparency, disposal, interlace row order and looping frame lookup, refusing GIFs too large to hold decoded');

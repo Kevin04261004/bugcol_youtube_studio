@@ -2,6 +2,7 @@ import {Window} from 'happy-dom';
 import {build} from 'esbuild';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import {gifBytes,decodeGif} from '../dist/gif.js';
 const window=new Window({url:'https://example.test',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
 window.document.write(fs.readFileSync('dist/index.html','utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
 // 캔버스에 실제로 칠해진 배경색을 받아 적는다. 어느 조각이 그려졌는지는 이걸로만 알 수 있다.
@@ -63,6 +64,21 @@ await settle();
 assert.equal(lastPreviewFill(),'#0000bb','빈 구간을 지나면 다음 조각이 나온다');
 assert.match($('edSceneName').textContent,/조각 2/,'그 조각이 선택된다');
 
+// 움직이는 GIF 를 소재로 가져오면 타임라인 위치에 맞는 프레임이 나온다
+const solid=c=>{const a=new Uint8ClampedArray(8*8*4);
+ for(let i=0;i<8*8;i++){a[i*4]=c[0];a[i*4+1]=c[1];a[i*4+2]=c[2];a[i*4+3]=255;}return a;};
+const clip3=gifBytes([{rgba:solid([220,20,20]),delay:1},{rgba:solid([20,200,20]),delay:1}],{width:8,height:8});
+$('edFiles').files={length:1,0:new window.File([clip3],'loop.gif',{type:'image/gif'}),[Symbol.iterator]:function*(){yield this[0];}};
+$('edFiles').dispatchEvent(new window.Event('change',{bubbles:true}));
+await new Promise(r=>setTimeout(r,300));
+assert.equal(window.document.querySelectorAll('#edAssets .asset-card').length,1,'GIF 도 소재로 받아들인다');
+assert.match(window.document.querySelector('#edAssets .asset-card span').textContent,/loop\.gif/);
+assert.ok(window.document.querySelector('#edAssets .gif-tag'),'움직이는 그림임을 표시한다');
+// 파일 형식 검사가 GIF 를 막지 않는지 (막혔다면 소재가 0개였을 것)
+const decoded=decodeGif(clip3);
+assert.equal(decoded.frames.length,2);
+assert.equal(decoded.duration,2);
+
 assert.deepEqual(errors,[]);
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip');
+console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, and animated GIFs import as material');
 await window.happyDOM.abort();

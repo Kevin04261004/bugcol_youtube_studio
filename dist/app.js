@@ -1,7 +1,7 @@
 import {createFreeEditor} from './editor.js';
 import {drawLayers,layerVideoTime} from './editor-engine.js';
 import {getFrameRate} from './fps.js';
-import {createGifWriter} from './gif.js';
+import {createGifWriter,decodeGif,gifFrameAt} from './gif.js';
 import{createCloudEditor}from'./cloud.js';
 import{zip,unzipSync,strToU8,strFromU8}from'./vendor/fflate.js';
 import{Muxer,ArrayBufferTarget,FileSystemWritableFileStreamTarget}from'./vendor/mp4-muxer.js';
@@ -99,9 +99,20 @@ function setClip(key,value){const c=clip();if(!c)return;const d=$('clipVideo').d
  scheduleSave();syncClip();drawPreview();}
 function renderTimeline(){$('timeline').innerHTML=project.video.map((c,i)=>`<button class="timeline-card ${i===clipIndex?'selected':''}" data-index="${i}"><div class="thumb" style="background:${esc(c.scene.background||'#171925')}">${esc(c.scene.title||c.scene.asset?.split('/').pop()||'빈 조각').slice(0,90)}</div><p>${pad(i+1)} <span>${c.scene.reviewed?'✓ 검수 완료':c.scene.asset||c.scene.layers?.length?'소재 연결됨':'기본 페이지'}</span><small>${time(c.start)} · ${c.duration.toFixed(2)}초</small></p></button>`).join('')||'<p class="timeline-empty">영상 조각을 타임라인에 올리면 여기에 나타납니다.</p>';$('timeline').querySelectorAll('[data-index]').forEach(el=>el.onclick=()=>selectClip(+el.dataset.index));}
 function clearMedia(){clipAsset=null;for(const v of mediaCache.values()){if(v.el instanceof HTMLVideoElement){v.el.pause();v.el.removeAttribute('src');v.el.load();}URL.revokeObjectURL(v.url);}mediaCache.clear();}
-function assetType(name){return /\.(mp4|webm)$/i.test(name)?'video':/\.(png|jpe?g|webp)$/i.test(name)?'image':null;}
-function blobType(name){return({mp4:'video/mp4',webm:'video/webm',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'})[name.split('.').pop().toLowerCase()]||'application/octet-stream';}
-async function loadMedia(name,instance=''){if(!name)return null;const cacheKey=instance?name+'::'+instance:name;if(mediaCache.has(cacheKey))return mediaCache.get(cacheKey).promise;const blob=project.assets[name];if(!blob)throw Error('소재를 찾을 수 없습니다: '+name);const url=URL.createObjectURL(blob),kind=assetType(name),el=kind==='video'?document.createElement('video'):new Image();const entry={url,el,promise:null};entry.promise=new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('소재 로딩 시간 초과: '+name)),20000);const loaded=()=>{clearTimeout(timeout);resolve(el);};const failed=()=>{clearTimeout(timeout);reject(Error('지원하지 않거나 손상된 소재: '+name));};if(kind==='video'){el.muted=true;el.playsInline=true;el.preload='auto';el.onloadeddata=loaded;el.onerror=failed;}else{el.onload=loaded;el.onerror=failed;}el.src=url;});mediaCache.set(cacheKey,entry);return entry.promise;}
+function assetType(name){return /\.(mp4|webm)$/i.test(name)?'video':/\.gif$/i.test(name)?'gif':/\.(png|jpe?g|webp)$/i.test(name)?'image':null;}
+function blobType(name){return({mp4:'video/mp4',webm:'video/webm',gif:'image/gif',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'})[name.split('.').pop().toLowerCase()]||'application/octet-stream';}
+const gifImages=new WeakMap();
+function showGifFrame(el,t){const frame=gifFrameAt(el.gif,Math.max(0,t));if(el.shown===frame)return;el.shown=frame;
+ let image=gifImages.get(frame);
+ if(!image){image=new ImageData(frame.rgba,el.gif.width,el.gif.height);gifImages.set(frame,image);}
+ el.getContext('2d').putImageData(image,0,0);}
+async function loadGif(blob){const data=decodeGif(new Uint8Array(await blob.arrayBuffer()));
+ const el=document.createElement('canvas');el.width=data.width;el.height=data.height;
+ Object.assign(el,{naturalWidth:data.width,naturalHeight:data.height,duration:data.duration,gif:data});
+ showGifFrame(el,0);return el;}
+async function loadMedia(name,instance=''){if(!name)return null;const cacheKey=instance?name+'::'+instance:name;if(mediaCache.has(cacheKey))return mediaCache.get(cacheKey).promise;const blob=project.assets[name];if(!blob)throw Error('소재를 찾을 수 없습니다: '+name);const kind=assetType(name);
+ if(kind==='gif'){const entry={url:'',el:null,promise:null};entry.promise=loadGif(blob).then(el=>{entry.el=el;return el;});mediaCache.set(cacheKey,entry);return entry.promise;}
+ const url=URL.createObjectURL(blob),el=kind==='video'?document.createElement('video'):new Image();const entry={url,el,promise:null};entry.promise=new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('소재 로딩 시간 초과: '+name)),20000);const loaded=()=>{clearTimeout(timeout);resolve(el);};const failed=()=>{clearTimeout(timeout);reject(Error('지원하지 않거나 손상된 소재: '+name));};if(kind==='video'){el.muted=true;el.playsInline=true;el.preload='auto';el.onloadeddata=loaded;el.onerror=failed;}else{el.onload=loaded;el.onerror=failed;}el.src=url;});mediaCache.set(cacheKey,entry);return entry.promise;}
 function linesFor(g,text,maxWidth){const lines=[];for(const paragraph of String(text).split('\n')){let line='';for(const ch of paragraph){if(g.measureText(line+ch).width>maxWidth&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}return lines;}
 function textBlock(g,text,x,y,width,size,maxLines,color='#fff',align='left'){g.font=`600 ${size}px "Noto Sans KR",sans-serif`;g.textAlign=align;g.fillStyle=color;let lines=linesFor(g,text,width);if(lines.length>maxLines){lines=lines.slice(0,maxLines);lines[maxLines-1]=lines[maxLines-1].slice(0,-1)+'…';}lines.forEach((l,i)=>g.fillText(l,x,y+i*size*1.5));return lines.length*size*1.5;}
 function paintScene(g,shot){const v=shot.scene,t=shot.sceneTime,media=shot.media;g.fillStyle=v.background||'#171925';g.fillRect(0,0,1280,720);if(Array.isArray(v.layers)){drawLayers(g,v.layers,t,shot.layerMedia||new Map(),shot.editing);}else if(media){const mw=media.videoWidth||media.naturalWidth,mh=media.videoHeight||media.naturalHeight,x=v.layout==='split'?630:0,y=0,dw=v.layout==='split'?650:1280,dh=720,scale=Math.max(dw/mw,dh/mh)*(v.motion==='zoom'?1+.08*Math.min(1,t/shot.sceneSpan):1);g.save();g.beginPath();g.rect(x,y,dw,dh);g.clip();g.drawImage(media,x+(dw-mw*scale)/2,y+(dh-mh*scale)/2,mw*scale,mh*scale);if(needsScrim(v.layout,true)){g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x,y,dw,dh);}g.restore();}
@@ -128,7 +139,11 @@ function shotAt(t,media=null){const at=Math.max(0,t),c=videoClipAt(project.video
  if(!c&&!total())return null;
  return shotOf(c,c?at-c.start:0,at,media);}
 async function prepareLayers(shot){if(!shot)return;shot.layerMedia=new Map();for(const l of shot.scene.layers||[])if(l.asset)shot.layerMedia.set(l.id,await loadMedia(l.asset,l.id));}
-async function seekLayers(shot){for(const l of shot.scene.layers||[]){const el=shot.layerMedia?.get(l.id);if(el instanceof HTMLVideoElement)await seekVideo(el,layerVideoTime(l,shot.sceneTime,el.duration));}}
+// 소재 시간 맞추기. 영상은 그 지점으로 감고, GIF 는 해당 프레임을 찍는다(끝나면 처음으로 돈다).
+async function showMedia(el,scene,t){if(el instanceof HTMLVideoElement)return seekVideo(el,clipTimeAt(scene,t,el.duration));if(el?.gif)showGifFrame(el,t);}
+async function seekLayers(shot){for(const l of shot.scene.layers||[]){const el=shot.layerMedia?.get(l.id);
+ if(el instanceof HTMLVideoElement)await seekVideo(el,layerVideoTime(l,shot.sceneTime,el.duration));
+ else if(el?.gif)showGifFrame(el,Math.max(0,shot.sceneTime-(l.start||0)));}}
 let previewing=false;
 let clipUrl=null,clipAsset=null,cutUrl=null,cutting=false,cutCancelled=false;
 const clipStart=i=>project.video[i]?.start||0;
@@ -143,7 +158,7 @@ function narrationBuffer(from,end){const b=ctx.createBuffer(1,Math.max(1,samples
  return b;}
 async function drawAt(t,still=true){const shot=shotAt(t);if(!shot)return null;shot.still=still;
  await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);
- if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));
+ await showMedia(shot.media,shot.scene,shot.sceneTime);
  return shot;}
 let drawVersion=0;async function drawPreview(){if(freeEditor){freeEditor.paint();return;}const version=++drawVersion;
  const at=clipStart(clipIndex);
@@ -213,7 +228,7 @@ async function renderCompatibleVideo(want=''){
  while(ctx.currentTime-began<end){if(renderCancelled)throw Error('렌더링을 취소했습니다.');if(recordingError)throw recordingError;
   const t=ctx.currentTime-began,shot=shotAt(t);
   if(shot?.clip!==lastClip){lastClip=shot?.clip||null;prev=lastShot;if(shot)await prepareLayers(shot);}
-  if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));}
+  if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);await showMedia(shot.media,shot.scene,shot.sceneTime);}
   drawScene(canvas,shot,prev);lastShot=shot;
   $('renderProgress').value=t/end;$('renderStatus').textContent=`호환 모드 · ${Math.round(t/end*100)}% · 영상 길이만큼 시간이 걸려요. 이 탭을 열어 두세요.`;await new Promise(requestAnimationFrame);}
  source.stop();source.disconnect();source=null;
@@ -238,7 +253,7 @@ async function renderGif(){
    if(renderCancelled)throw Error('GIF 만들기를 취소했습니다.');
    const t=frame/fps,shot=shotAt(t);
    if(shot?.clip!==lastClip){lastClip=shot?.clip||null;prev=lastShot;if(shot)await prepareLayers(shot);}
-   if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement){shot.media.pause();await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));}}
+   if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)shot.media.pause();await showMedia(shot.media,shot.scene,shot.sceneTime);}
    drawScene(canvas,shot,prev);lastShot=shot;
    writer.addFrame(g.getImageData(0,0,width,height).data,1/fps);
    const fraction=(frame+1)/count;$('renderProgress').value=fraction;
@@ -266,7 +281,7 @@ for(;frame<frameTotal;frame++){if(renderCancelled)throw Error('렌더링을 취�
  const t=frame/getFrameRate(),shot=shotAt(t);
  // 조각이 바뀌는 순간의 직전 화면을 붙잡아 둔다. 덮으며 등장하는 효과가 그 위에 얹힌다.
  if(shot?.clip!==lastClip){lastClip=shot?.clip||null;prev=lastShot;if(shot)await prepareLayers(shot);}
- if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement){shot.media.pause();await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));}}
+ if(shot){shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)shot.media.pause();await showMedia(shot.media,shot.scene,shot.sceneTime);}
  drawScene(canvas,shot,prev);lastShot=shot;
  const vf=new VideoFrame(canvas,{timestamp:Math.round(frame*1e6/getFrameRate()),duration:Math.round((frame+1)*1e6/getFrameRate())-Math.round(frame*1e6/getFrameRate())});ve.encode(vf,{keyFrame:frame%(getFrameRate()*2)===0});vf.close();
  await encodeAudioUntil(Math.round((frame+1)*1e6/getFrameRate()));await drain(ve,8);
@@ -474,7 +489,7 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
   const source=ctx.createBufferSource();source.buffer=b;source.connect(ctx.destination);timelineSources.push(source);const begins=ctx.currentTime+.04;source.start(begins);
   return()=>Math.max(from,from+ctx.currentTime-begins);},
  async draw(at,editing){const version=++editorDrawVersion,c=clip(),inside=c&&at>=c.start&&at<clipEnd(c);
-  const shot=inside?shotOf(c,at-c.start,at):shotAt(at);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);if(shot.media instanceof HTMLVideoElement)await seekVideo(shot.media,clipTimeAt(shot.scene,shot.sceneTime,shot.media.duration));if(version===editorDrawVersion)drawScene($('preview'),shot);},
+  const shot=inside?shotOf(c,at-c.start,at):shotAt(at);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);await showMedia(shot.media,shot.scene,shot.sceneTime);if(version===editorDrawVersion)drawScene($('preview'),shot);},
  empty:()=>drawScene($('preview'),null),addScene:addFreeScene,deleteScene:()=>deleteClip(clipIndex),
  reorder:(i,j)=>{const a=project.video[i],b=project.video[j];if(!a||!b)return;const start=a.start;moveClip(a,b.start);moveClip(b,start);project.video.sort((x,y)=>x.start-y.start);clipIndex=project.video.indexOf(a);changed();render();},select:selectClip,
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
