@@ -38,6 +38,24 @@ await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>bytes.buf
 assert.equal(JSON.stringify(read().sentences.map(s=>s.scene.layers)),JSON.stringify(before.map(s=>s.scene.layers)));
 assert.equal(read().sentences[0].durationSeconds,3);
 assert.equal($('renderMp4').disabled,false,'녹음 없이 출력할 수 있다');
+assert.equal($('edTracks').querySelectorAll('[data-narration]').length,2,'모든 대사가 동시에 타임라인에 놓인다');
+assert.equal($('edTracks').querySelectorAll('[data-clip]').length,2,'장면 소재가 각각 트랙에 보인다');
+assert.equal($('edTracks').querySelector('[data-narration="1"]').style.left,'322px','두 번째 대사는 첫 장면 3초 뒤에 시작한다');
+$('edScrub').value='4';$('edScrub').dispatchEvent(new window.Event('input'));
+assert.match($('edSceneName').textContent,/장면 2/,'전체 재생 위치로 다음 장면을 선택한다');
+assert.match($('edClock').textContent,/00:04.00 \/ 00:06.00/);
+$('edAddText').click();
+assert.equal($('edTracks').querySelectorAll('[data-clip]').length,3,'다른 장면을 선택해도 이전 장면의 소재가 남아 보인다');
+$('edBeginning').click();assert.match($('edSceneName').textContent,/장면 1/);
+// A silent scene still advances on the shared audio clock and crosses scene boundaries.
+window.AudioContext=class {constructor(){this.state='running';this.started=Date.now();}get currentTime(){return(Date.now()-this.started)/1000;}};
+$('edDuration').value='.1';$('edDuration').dispatchEvent(new window.Event('change'));
+$('edTracks').querySelector('[data-shot="1"]').click();
+$('edDuration').value='.1';$('edDuration').dispatchEvent(new window.Event('change'));
+$('edBeginning').click();await $('edPlay').onclick();
+await new Promise(r=>setTimeout(r,400));
+assert.match($('edSceneName').textContent,/장면 2/);assert.equal($('edPlay').textContent,'▶');
+assert.match($('edClock').textContent,/00:00.20 \/ 00:00.20/,'전체 영상 끝에서 정확히 정지한다');
 assert.deepEqual(errors,[]);
 console.log('PASS newline scenes, optional captions, property edits, two keyframes, duplicate, undo/redo and project ZIP restoration');
 await window.happyDOM.abort();

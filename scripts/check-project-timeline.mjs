@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {timelineLayout,locateTime} from '../dist/project-timeline.js';
+const duration=s=>s.seconds;
+const scenes=[{seconds:2.52,text:'첫 번째',scene:{layers:[{id:'a',start:.2,end:1.2}]}},{seconds:4.94,text:'두 번째',scene:{layers:[{id:'b',start:.5,end:0},{id:'c',start:1,end:2}]}},{seconds:3,text:'세 번째',scene:{layers:[]}}];
+const layout=timelineLayout(scenes,duration);
+const rounded=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='number'?Math.round(v*1e9)/1e9:v));
+assert.equal(layout.total,10.46);assert.deepEqual(rounded(layout.scenes.map(s=>s.start)),[0,2.52,7.46]);
+assert.equal(locateTime(layout,2.52).index,1);assert.equal(locateTime(layout,3.02).local,.5);assert.equal(locateTime(layout,100).index,2);assert.equal(locateTime(layout,-5).local,0);
+assert.deepEqual(rounded(layout.clips.map(c=>[c.lane,c.start,c.end])),[[0,.2,1.2],[0,3.02,7.46],[1,3.52,4.52]]);
+scenes[2].scene.continues=true;const continued=timelineLayout(scenes,duration);assert.equal(continued.clips[1].end,10.46);assert.equal(continued.clips.length,3);
+assert.equal(timelineLayout([],duration).total,0);assert.equal(locateTime(timelineLayout([],duration),0),null);
+const legacy=timelineLayout([{seconds:3,scene:{asset:'clips/example.mp4'}}],duration);assert.equal(legacy.clips[0].layer.legacy,true);
+console.log('PASS global narration offsets, scene boundaries, stacked material lanes, continuation spans and legacy scenes');
