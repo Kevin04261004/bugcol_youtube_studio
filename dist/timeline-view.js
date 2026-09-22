@@ -28,6 +28,20 @@ export function createProjectTimeline(root,h){
    const done=()=>{dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};
    el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);};
  }
+ // 마우스 끌어놓기와 손가락 길게 끌기가 같은 자리로 들어온다. el 은 이벤트가 난 막대(없으면 좌표로 찾는다).
+ function under(x,y,el){const hit=el||(document.elementFromPoint?document.elementFromPoint(x,y):null);
+  return{bar:hit?.closest?.('[data-clip]')||null,lane:hit?.closest?.('[data-lane]')||null};}
+ function hover(x,y){root.querySelectorAll('.drop-hot').forEach(n=>n.classList.remove('drop-hot'));if(x==null)return;under(x,y).bar?.classList.add('drop-hot');}
+ function dropAsset(key,x,y,el){hover(null);if(!layout||h.busy())return true;
+  const{bar,lane}=under(x,y,el);if(!bar&&!lane)return false;
+  h.stop();
+  const empty=c=>c&&!c.layer.asset&&c.layer.kind!=='text';
+  // 빈 칸에 놓으면 그 칸을 채우고, 이미 찬 칸이면 바꾸지 않고 소재 줄을 하나 더 만든다.
+  if(bar){const c=layout.layers[+bar.dataset.clip];if(empty(c)){h.fillLayer(c.clipIndex,c.layer.id,key);return true;}}
+  const hit=locateTime(layout,timeAt({clientX:x}));if(!hit)return false;
+  if(lane){const slot=layout.layers.find(c=>c.lane===+lane.dataset.lane&&c.clipIndex===hit.index&&empty(c));
+   if(slot){h.fillLayer(slot.clipIndex,slot.layer.id,key);return true;}}
+  h.seek(hit.time);h.addAsset(key,hit.local);return true;}
  function render(nextZoom=zoom){if(dragging)return;zoom=nextZoom;layout=timelineLayout(h.video(),h.audio());root.style.width=Math.max(scroll.clientWidth||500,RAIL+20+layout.total*zoom)+'px';
   const step=Math.max(zoom<40?5:zoom<80?2:1,Math.ceil(layout.total/1000));let ticks='';for(let t=0;t<=layout.total;t+=step)ticks+=`<span style="left:${x(t)}px">${clock(t)}</span>`;
   let html=`<div class="track-ruler" aria-label="전체 영상 시간 눈금"><b class="timeline-rail">전체 영상</b>${ticks}</div><div id="edPlayhead" style="left:${x(h.time())}px"></div>`;
@@ -53,11 +67,8 @@ export function createProjectTimeline(root,h){
   root.querySelectorAll('[data-clip]').forEach(el=>{
    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
    el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
-   el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');if(h.busy())return;
-    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();
-    // 빈 칸이면 그 칸을 채우고, 이미 찬 칸이면 바꾸지 않고 소재 줄을 하나 더 만든다.
-    if(!c.layer.asset&&c.layer.kind!=='text')return h.fillLayer(c.clipIndex,c.layer.id,key);
-    const hit=locateTime(layout,timeAt(e));if(!hit)return;h.seek(hit.time);h.addAsset(key,hit.local);});
+   el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');
+    const key=e.dataTransfer.getData('text/asset');if(key)dropAsset(key,e.clientX,e.clientY,el);});
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
    el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
     if(l.locked){dragging=false;return;}
@@ -79,13 +90,9 @@ export function createProjectTimeline(root,h){
    el.addEventListener('drop',e=>{e.preventDefault();if(h.busy())return;const at=timeAt(e);
     const take=e.dataTransfer.getData('text/take');
     if(el.dataset.drop==='audio'){if(take){h.stop();h.dropTake(Number(take),at);}return;}
-    const key=e.dataTransfer.getData('text/asset'),hit=locateTime(layout,at);
-    if(!key||!hit)return;
-    const lane=+el.dataset.lane,slot=layout.layers.find(c=>c.lane===lane&&c.clipIndex===hit.index&&!c.layer.asset&&c.layer.kind!=='text');
-    h.stop();
-    if(slot)h.fillLayer(slot.clipIndex,slot.layer.id,key);
-    else{h.seek(hit.time);h.addAsset(key,hit.local);}});}
+    const key=e.dataTransfer.getData('text/asset');
+    if(key)dropAsset(key,e.clientX,e.clientY,el);});}
   playhead(h.time());
  }
- return{render,playhead,fit(){const d=timelineLayout(h.video(),h.audio()).total;return Math.max(2,Math.min(160,((scroll.clientWidth||700)-150)/Math.max(1,d)));}};
+ return{render,playhead,hover,dropAsset,fit(){const d=timelineLayout(h.video(),h.audio()).total;return Math.max(2,Math.min(160,((scroll.clientWidth||700)-150)/Math.max(1,d)));}};
 }

@@ -11,3 +11,5 @@
 header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7px;padding:9px 12px}header .header-actions button:not(.primary){background:#292e35;color:#e6e9ed;border-color:#3a4048}
 
 @media(max-width:800px){.rail .nav span{display:inline}.rail .nav{padding:5px 7px}.rail .nav span{font-size:10px}#freeEditor[data-pane=layers] #edSceneProps,#freeEditor[data-pane=layers] #edLayerProps,#freeEditor[data-pane=layers] .properties-pane>.ed-heading{display:none!important}#freeEditor[data-pane=properties] #edLayerList{display:none}.properties-pane input,.properties-pane select{font-size:16px!important}}
+/* 손가락으로 끌 때 따라다니는 이름표. 실제로 무엇을 옮기는지 보여 준다. */
+.drag-ghost{position:fixed;z-index:60;transform:translate(-50%,-140%);padding:6px 10px;border-radius:7px;background:#c6f17e;color:#1b2430;font-size:12px;font-weight:700;pointer-events:none;box-shadow:0 6px 18px #000a;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
