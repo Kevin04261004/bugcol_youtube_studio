@@ -199,39 +199,95 @@ assert.deepEqual(errors,[]);
  $('edRedo').click();assert.equal(spans().find(c=>c.layer.id===bid).start,before.start-2);
 }
 
-// 자막은 조각마다가 아니라 프로젝트 전체 스위치 하나로 켜고 끈다
+// 소재함은 유니티 프로젝트 창처럼 폴더 나무다 — 폴더를 만들고, 그 안으로 소재를 옮긴다
 {
- const capBtn=$('edCaptionsAll');
- assert.ok(capBtn,'타임라인 도구에 전체 자막 스위치가 있다');
- assert.equal(window.document.getElementById('edCaptions'),null,'조각별 자막 체크는 없어졌다');
- assert.equal(window.document.getElementById('sceneCaptions'),null,'옛 인스펙터의 자막 체크도 없어졌다');
- assert.equal(read().captions,true,'처음에는 켜져 있다');
- assert.match(capBtn.textContent,/켜짐/);
- assert.equal(capBtn.getAttribute('aria-pressed'),'true');
+ const rows=()=>[...$('edAssets').querySelectorAll('.tree-row')].map(r=>r.dataset.folder||r.dataset.asset);
+ assert.deepEqual(rows(),['media','media/loop.gif'],'뿌리 폴더 아래에 소재가 달린다');
+ assert.match($('edAssets').querySelector('[data-folder="media"] .row-label').textContent,/Assets/,'뿌리는 Assets 로 보인다');
 
- capBtn.click();
- assert.equal(read().captions,false,'한 번 누르면 영상 전체에서 꺼진다');
- assert.match($('edCaptionsAll').textContent,/꺼짐/);
- assert.equal($('edCaptionsAll').getAttribute('aria-pressed'),'false');
+ $('edNewFolder').click();
+ assert.deepEqual([...read().folders],['media/새 폴더'],'폴더가 프로젝트에 남는다');
+ assert.deepEqual(rows(),['media','media/새 폴더','media/loop.gif'],'만든 폴더가 나무에 보인다');
 
- // 조각을 새로 만들어도 그 조각만 따로 켜지거나 꺼지지 않는다
- $('edNewScene').click();
- assert.equal(read().captions,false,'새 조각을 만들어도 전체 설정 그대로다');
- assert.ok(read().video.every(c=>c.scene.captions===undefined),'조각에는 자막 설정이 남지 않는다');
+ // 폴더 이름 바꾸기 — 두 번 눌러 고친다
+ const folderRow=$('edAssets').querySelector('[data-folder="media/새 폴더"]');
+ folderRow.ondblclick();
+ const input=$('edAssets').querySelector('.row-rename');
+ assert.ok(input,'이름 칸이 열린다');
+ input.value='녹음';input.onblur();
+ assert.deepEqual([...read().folders],['media/녹음'],'폴더 이름이 바뀐다');
 
- // 껐다 켠 상태가 프로젝트 ZIP 으로 오갈 때 그대로 남는다
+ // 이 소재를 쓰는 블록을 하나 만들어 둔다 — 폴더를 옮겨도 블록이 따라와야 한다
+ {const row=$('edTracks').querySelector('[data-lane="0"]'),d=new window.Event('drop',{bubbles:true});
+  Object.assign(d,{clientX:400,clientY:100,dataTransfer:{getData:t=>t==='text/asset'?'media/loop.gif':''}});
+  row.dispatchEvent(d);await new Promise(r=>setTimeout(r,300));
+  assert.ok(read().video.some(c=>(c.scene.layers||[]).some(l=>l.asset==='media/loop.gif')),'블록이 그 소재를 쓴다');}
+
+ // 소재를 폴더 위로 끌어다 놓으면 그 폴더로 옮겨진다
+ const target=$('edAssets').querySelector('[data-folder="media/녹음"]');
+ const move=new window.Event('drop',{bubbles:true});
+ move.dataTransfer={getData:t=>t==='text/asset'?'media/loop.gif':''};
+ target.dispatchEvent(move);
+ assert.ok(read().assets.includes('media/녹음/loop.gif'),'소재 경로가 폴더 안으로 바뀐다');
+ assert.ok(read().video.some(c=>(c.scene.layers||[]).some(l=>l.asset==='media/녹음/loop.gif')),'그 소재를 쓰던 블록도 따라간다');
+
+ // 폴더를 접으면 안의 소재가 사라지고, 비어 있지 않으면 지울 수 없다
+ $('edAssets').querySelector('[data-toggle="media/녹음"]').click(new window.Event('click'));
+ assert.deepEqual(rows(),['media','media/녹음'],'접힌 폴더는 속을 감춘다');
+ $('edAssets').querySelector('[data-folder-remove="media/녹음"]').click(new window.Event('click'));
+ assert.deepEqual([...read().folders],['media/녹음'],'소재가 든 폴더는 지워지지 않는다');
+}
+
+// 녹음 파일도 소재함으로 가져와 이미지처럼 끌어다 쓴다 — 단 언제나 녹음 줄로 간다
+{
+ // happy-dom 에는 오디오 장치가 없어, 길이만 아는 최소한의 해독기를 끼워 둔다.
+ const RATE=48000,seconds=2;
+ window.AudioContext=class{constructor(){this.state='running';}resume(){}
+  async decodeAudioData(){return{duration:seconds,length:RATE*seconds,sampleRate:RATE};}};
+ window.OfflineAudioContext=class{constructor(ch,length){this.length=length;}
+  createBufferSource(){return{buffer:null,connect(){},start(){}};}get destination(){return{};}
+  async startRendering(){const data=new Float32Array(this.length).fill(.25);return{getChannelData:()=>data};}};
+
+ const wav=new Uint8Array(64);
+ $('edFiles').files={length:1,0:new window.File([wav],'voice.mp3',{type:'audio/mpeg'}),[Symbol.iterator]:function*(){yield this[0];}};
+ $('edFiles').dispatchEvent(new window.Event('change',{bubbles:true}));
+ await new Promise(r=>setTimeout(r,300));
+ assert.ok(read().assets.includes('media/voice.mp3'),'녹음 파일도 소재함에 들어온다');
+ const row=$('edAssets').querySelector('[data-asset="media/voice.mp3"]');
+ assert.ok(row,'나무에 줄이 생긴다');
+ assert.equal(row.querySelector('img'),null,'그림이 아니라 아이콘으로 보인다');
+ assert.equal(row.querySelector('.row-icon').textContent,'♫');
+
+ // 소재 줄 위에 놓아도 화면 레이어가 되지 않고 녹음 줄에 올라간다
+ const takesBefore=read().audio.length,layersBefore=read().video.flatMap(c=>c.scene.layers||[]).length;
+ const lane=$('edTracks').querySelector('[data-lane="0"]'),drop=new window.Event('drop',{bubbles:true});
+ Object.assign(drop,{clientX:420,clientY:100,dataTransfer:{getData:t=>t==='text/asset'?'media/voice.mp3':''}});
+ lane.dispatchEvent(drop);
+ await new Promise(r=>setTimeout(r,400));
+ assert.equal(read().video.flatMap(c=>c.scene.layers||[]).length,layersBefore,'녹음은 화면 블록이 되지 않는다');
+ assert.equal(read().audio.length,takesBefore+1,'녹음 줄에 한 조각이 올라간다');
+ const take=read().audio.at(-1);
+ assert.ok(Math.abs(take.duration-seconds)<.01,'녹음 길이만큼 자리를 차지한다');
+ assert.ok(take.start>0,'놓은 자리에서 시작한다');
+ assert.match(read().sentences.at(-1).text,/voice/,'파일 이름이 대사가 된다');
+}
+
+// 자막은 늘 켜져 있다 — 끄는 스위치가 없다
+{
+ assert.equal(window.document.getElementById('edCaptionsAll'),null,'자막 스위치는 없앴다');
+ assert.equal(window.document.getElementById('edCaptions'),null,'조각별 자막 체크도 없다');
+ assert.equal(window.document.getElementById('sceneCaptions'),null,'옛 인스펙터의 자막 체크도 없다');
+ assert.equal(read().captions,true,'자막은 기본으로 켜져 있다');
+
+ // 자막을 꺼 둔 옛 프로젝트를 열어도 켜진 채로 돌아온다
  const saved=read();
  const zip=zipSync({'project.json':strToU8(JSON.stringify({version:2,name:'자막 테스트',captions:false,
   sentences:saved.sentences.map(x=>({id:x.id,text:x.text,audio:null})),
   video:saved.video.map(c=>({id:'v'+c.slot,start:c.start,duration:c.duration,scene:c.scene})),audio:[]}))});
  await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
- assert.equal(read().captions,false,'꺼 둔 설정이 ZIP 에서 돌아와도 유지된다');
- assert.match($('edCaptionsAll').textContent,/꺼짐/);
-
- $('edCaptionsAll').click();
- assert.equal(read().captions,true,'다시 누르면 켜진다');
+ assert.equal(read().captions,true,'꺼 둔 옛 설정이 와도 자막은 켜진다');
 }
 
-console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth and captions');
+console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth, always-on captions, the Unity-style asset folder tree and audio materials that always land on the narration track');
 
 await window.happyDOM.abort();

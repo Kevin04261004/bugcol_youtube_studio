@@ -8,7 +8,7 @@ import{Muxer,ArrayBufferTarget,FileSystemWritableFileStreamTarget}from'./vendor/
 import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec,unusedAssetKeys,newVideoClip,newAudioClip,migrateProject,totalDuration,trackEnd,trackTail,clipEnd,clipsAt,videoClipAt,locateClip,moveClip,trimClip,trimRipple,mixNarration,MIN_CLIP}from'./core.js';
 const size=n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB';
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const emptyProject=()=>({version:2,name:'새로운 롱폼',captions:true,sentences:[],video:[],audio:[],assets:{}});
+const emptyProject=()=>({version:2,name:'새로운 롱폼',captions:true,sentences:[],video:[],audio:[],assets:{},folders:[]});
 let project=emptyProject(),selected=0,clipIndex=0,tab='record',busy=false,recording=false,recorder=null,stream=null,ctx=null,analyser=null,recFrame=0,recordStart=0,saveTimer=null,saveChain=Promise.resolve(),toastTimer,undo=new Map(),previewToken=0,audioSource=null,renderCancelled=false;
 const timelineSources=[];
 const mediaCache=new Map();let cloud=null,freeEditor=null;
@@ -20,7 +20,7 @@ const current=()=>project.sentences[selected],duration=s=>s?.audio?.length?s.aud
 // 배경이 밝은지. 밝으면 글씨를 어둡게 써야 읽힌다.
 function isLight(hex){const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||''));if(!m)return false;
  const n=parseInt(m[1],16);return((n>>16&255)*299+(n>>8&255)*587+(n&255)*114)/1000>150;}
-const captionsOn=()=>project.captions!==false;
+const captionsOn=()=>true;
 const clip=()=>project.video[clipIndex],sentenceById=id=>project.sentences.find(s=>s.id===id);
 const takeOf=c=>sentenceById(c?.sentenceId)?.audio||null;
 // 녹음 조각이 실제로 쓸 수 있는 최대 길이. 녹음 뒤쪽을 넘겨 늘릴 수는 없다.
@@ -42,7 +42,8 @@ function adoptProject(saved){if(!saved||!Array.isArray(saved.sentences))return n
  const next=saved.version===1?migrateProject(saved):saved;
  if(next.version!==2)return null;
  next.video??=[];next.audio??=[];next.assets??={};
- if(typeof next.captions!=='boolean')next.captions=!next.video.length||next.video.some(c=>c.scene?.captions);
+ next.captions=true;
+ next.folders=Array.isArray(next.folders)?next.folders.filter(f=>typeof f==='string'&&f.startsWith('media/')).slice(0,500):[];
  for(const c of next.video)freshBackground(c.scene);
  for(const s of next.sentences)delete s.scene;
  return next;}
@@ -58,6 +59,13 @@ function gapSeconds(){const end=total();let covered=0,at=0;
  for(const c of [...project.video].sort((a,b)=>a.start-b.start)){const from=Math.max(at,c.start);if(clipEnd(c)>from){covered+=clipEnd(c)-from;at=clipEnd(c);}}
  return Math.max(0,end-covered);}
 function renderList(){if(!project.sentences.length){$('sentenceList').innerHTML='<div class="empty-state"><span>▤</span>첫 번째 이야기를 가져오세요.<br>TXT 파일 하나면 시작할 수 있어요.</div>';return;}$('sentenceList').innerHTML=project.sentences.map((s,i)=>`<div class="sentence-row"><button class="sentence-item ${i===selected?'selected':''}" data-index="${i}"><span class="num">${pad(s.id)}</span><div><p>${esc(s.text||'새 문장')}</p><small>${s.audio?time(duration(s),true)+' · 녹음 완료':'녹음 대기'}</small></div><span class="done">${s.audio?'✓':''}</span></button><button class="sentence-del" data-del="${i}" aria-label="문장 ${pad(s.id)} 삭제" title="문장 삭제">✕</button></div>`).join('');$('sentenceList').querySelectorAll('[data-index]').forEach(el=>el.onclick=()=>selectSentence(+el.dataset.index));$('sentenceList').querySelectorAll('[data-del]').forEach(el=>el.onclick=e=>{e.stopPropagation();deleteSentence(+el.dataset.del);});}
+const folderPath=raw=>{const path=String(raw||'').replace(/\\/g,'/').replace(/\/+/g,'/').replace(/^\/|\/$/g,'');
+ if(!path.startsWith('media/')||path.length>200||/(^|\/)\.\.?(\/|$)/.test(path))return null;return path;};
+const folderTaken=path=>(project.folders||[]).includes(path)||Object.keys(project.assets).some(k=>k.startsWith(path+'/'));
+function rekeyAsset(from,to){if(!project.assets[from]||project.assets[to])return;
+ project.assets[to]=project.assets[from];delete project.assets[from];
+ for(const c of project.video){if(c.scene.asset===from)c.scene.asset=to;
+  for(const l of c.scene.layers||[])if(l.asset===from)l.asset=to;}}
 function pruneAssets(){for(const key of unusedAssetKeys(Object.keys(project.assets),project.video.flatMap(c=>[c.scene.asset,...(c.scene.layers||[]).map(l=>l.asset)]).concat(Object.keys(project.assets).filter(k=>k.startsWith('media/')))))delete project.assets[key];}
 function deleteSentence(i){
  if(recording||busy)return toast('녹음이나 파일 처리가 끝난 뒤에 지울 수 있습니다.');
@@ -109,8 +117,8 @@ function setClip(key,value){const c=clip();if(!c)return;const d=$('clipVideo').d
  scheduleSave();syncClip();drawPreview();}
 function renderTimeline(){$('timeline').innerHTML=project.video.map((c,i)=>`<button class="timeline-card ${i===clipIndex?'selected':''}" data-index="${i}"><div class="thumb" style="background:${esc(c.scene.background||WHITE)}">${esc(c.scene.title||c.scene.asset?.split('/').pop()||'빈 조각').slice(0,90)}</div><p>${pad(i+1)} <span>${c.scene.reviewed?'✓ 검수 완료':c.scene.asset||c.scene.layers?.length?'소재 연결됨':'기본 페이지'}</span><small>${time(c.start)} · ${c.duration.toFixed(2)}초</small></p></button>`).join('')||'<p class="timeline-empty">영상 조각을 타임라인에 올리면 여기에 나타납니다.</p>';$('timeline').querySelectorAll('[data-index]').forEach(el=>el.onclick=()=>selectClip(+el.dataset.index));}
 function clearMedia(){clipAsset=null;for(const v of mediaCache.values()){if(v.el instanceof HTMLVideoElement){v.el.pause();v.el.removeAttribute('src');v.el.load();}URL.revokeObjectURL(v.url);}mediaCache.clear();}
-function assetType(name){return /\.(mp4|webm)$/i.test(name)?'video':/\.gif$/i.test(name)?'gif':/\.(png|jpe?g|webp)$/i.test(name)?'image':null;}
-function blobType(name){return({mp4:'video/mp4',webm:'video/webm',gif:'image/gif',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'})[name.split('.').pop().toLowerCase()]||'application/octet-stream';}
+function assetType(name){return /\.(mp4|webm)$/i.test(name)?'video':/\.gif$/i.test(name)?'gif':/\.(png|jpe?g|webp)$/i.test(name)?'image':/\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(name)?'audio':null;}
+function blobType(name){return({mp4:'video/mp4',webm:'video/webm',gif:'image/gif',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',ogg:'audio/ogg',aac:'audio/aac',flac:'audio/flac'})[name.split('.').pop().toLowerCase()]||'application/octet-stream';}
 const gifImages=new WeakMap();
 function showGifFrame(el,t){const frame=gifFrameAt(el.gif,Math.max(0,t));if(el.shown===frame)return;el.shown=frame;
  let image=gifImages.get(frame);
@@ -121,6 +129,7 @@ async function loadGif(blob){const data=decodeGif(new Uint8Array(await blob.arra
  Object.assign(el,{naturalWidth:data.width,naturalHeight:data.height,duration:data.duration,gif:data});
  showGifFrame(el,0);return el;}
 async function loadMedia(name,instance=''){if(!name)return null;const cacheKey=instance?name+'::'+instance:name;if(mediaCache.has(cacheKey))return mediaCache.get(cacheKey).promise;const blob=project.assets[name];if(!blob)throw Error('소재를 찾을 수 없습니다: '+name);const kind=assetType(name);
+ if(kind==='audio')throw Error('녹음 소재는 화면에 올릴 수 없습니다. 녹음 줄에 놓아 주세요.');
  if(kind==='gif'){const entry={url:'',el:null,promise:null};entry.promise=loadGif(blob).then(el=>{entry.el=el;return el;});mediaCache.set(cacheKey,entry);return entry.promise;}
  const url=URL.createObjectURL(blob),el=kind==='video'?document.createElement('video'):new Image();const entry={url,el,promise:null};entry.promise=new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('소재 로딩 시간 초과: '+name)),20000);const loaded=()=>{clearTimeout(timeout);resolve(el);};const failed=()=>{clearTimeout(timeout);reject(Error('지원하지 않거나 손상된 소재: '+name));};if(kind==='video'){el.muted=true;el.playsInline=true;el.preload='auto';el.onloadeddata=loaded;el.onerror=failed;}else{el.onload=loaded;el.onerror=failed;}el.src=url;});mediaCache.set(cacheKey,entry);return entry.promise;}
 function linesFor(g,text,maxWidth){const lines=[];for(const paragraph of String(text).split('\n')){let line='';for(const ch of paragraph){if(g.measureText(line+ch).width>maxWidth&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}return lines;}
@@ -199,7 +208,7 @@ async function previewAll(){if(busy||recording)return;if(previewing){stopPlaybac
   if(token===previewToken)stopPlayback();}catch(e){stopPlayback();toast(e.message);}}
 const ASTRA_GUIDE=`# 버콜 스튜디오 · Astra 장면 제작 요청\n\n이 ZIP의 manifest.json과 숫자 WAV를 읽고 각 문장에 어울리는 이미지·애니메이션 장면 패키지를 만들어 주세요. 녹음 순서는 id 순서이며 길이는 durationSeconds입니다. 대사는 그대로 유지하세요.\n\n## 반환 ZIP 규격 (version: 1)\nZIP 최상위에 scenes.json, 소재는 assets/에 넣으세요. 외부 URL과 실행 코드, HTML은 받지 않습니다. 이미지는 PNG/JPG/WebP, 영상은 MP4/WebM입니다. 폰트·텍스트·기본 애니메이션은 편집기의 동일한 캔버스 렌더러가 재현합니다. 복잡한 애니메이션은 16:9 영상으로 렌더해 소재로 넣으세요.\n\nscenes.json 예시:\n\n{\n  "version": 1,\n  "scenes": [\n    { "id": 1, "title": "첫 번째 이야기", "subtitle": "짧은 보조 문구", "asset": "assets/001.png", "layout": "split", "motion": "fade", "background": "#ffffff", "captions": true }\n  ]\n}\n\n- id: manifest.json의 문장 id(정수)와 정확히 일치. 중복 금지.\n- title, subtitle: 텍스트. title이 비면 대사를 사용. title은 한글 65자 이내 권장(긴 경우 화면에서 생략됨).\n- asset: ZIP 내부의 상대 경로. 생략하면 타이틀 페이지.\n- layout: title(텍스트 중심), split(좌 텍스트·우 소재), full(전체 소재).\n- motion: fade / zoom / slide / none. duration은 음성 길이로 자동 결정.\n- background: #RRGGBB. captions: true/false.\n- 1280×720 또는 1920×1080의 16:9. 안전 여백 5%.\n- 영상은 녹음 길이 이상 권장. 짧은 영상은 마지막 프레임을 유지. 영상 원음은 사용하지 않음. 자막 페이지는 녹음 길이에 비례해 전환하며 단어 단위 동기화가 아님.\n- HTML/CSS/JS 페이지는 직접 지원하지 않으므로 이미지나 영상으로 변환 후 넣기.\n- 파일 이름만 숫자인 이미지·영상(001.png, 002.mp4)도 직접 가져올 수 있음.\n\nAstra는 별도 대화에서 이 패키지를 제작합니다. 편집기는 AI 서비스에 자동으로 접속하지 않습니다.\n`;
 function zipAsync(files){return new Promise((resolve,reject)=>zip(files,{level:0},(e,data)=>e?reject(e):resolve(data)));}
-const trackManifest=()=>({version:2,name:project.name,captions:captionsOn(),sampleRate:RATE,channels:1,
+const trackManifest=()=>({version:2,name:project.name,captions:captionsOn(),sampleRate:RATE,channels:1,folders:project.folders||[],
  sentences:project.sentences.map(s=>({id:s.id,text:s.text,audio:s.audio?pad(s.id)+'.wav':null,durationSeconds:duration(s)})),
  video:project.video.map(c=>({id:c.id,start:c.start,duration:c.duration,scene:c.scene})),
  audio:project.audio.map(c=>({id:c.id,sentenceId:c.sentenceId,start:c.start,duration:c.duration,offset:c.offset||0,text:c.text}))});
@@ -221,7 +230,7 @@ function checkScene(raw,slot,files,assets){const scene=validScene({...raw,id:slo
  for(const l of scene.layers||[])if(l.asset){if(!files[l.asset])throw Error('레이어 소재 누락: '+l.asset);assets[l.asset]=new Blob([files[l.asset]],{type:blobType(l.asset)});}
  return freshBackground({...defaultScene(),...scene,reviewed:!!raw?.reviewed});}
 async function restoreProject(file){if(busy||recording)return;if((project.sentences.length||project.video.length)&&!confirm('현재 작업을 이 ZIP의 프로젝트로 교체할까요?'))return;setBusy(true);try{const files=readZip(new Uint8Array(await file.arrayBuffer())),raw=files['project.json']||files['manifest.json'];if(!raw)throw Error('프로젝트 또는 녹음 ZIP을 선택하세요.');const m=JSON.parse(strFromU8(raw));if(![1,2].includes(m.version)||!Array.isArray(m.sentences)||m.sentences.length>2000)throw Error('지원하지 않는 프로젝트입니다.');
- const next={version:2,name:String(m.name||'가져온 프로젝트'),captions:m.captions!==false,sentences:[],video:[],audio:[],assets:{}},ids=new Set(),legacy=[];
+ const next={version:2,name:String(m.name||'가져온 프로젝트'),captions:true,sentences:[],video:[],audio:[],assets:{},folders:(Array.isArray(m.folders)?m.folders:[]).filter(f=>typeof f==='string'&&f.startsWith('media/')).slice(0,500)},ids=new Set(),legacy=[];
  for(const item of m.sentences){if(typeof item.text!=='string')throw Error('문장 텍스트 오류');
   const id=Number(item.id);if(!Number.isInteger(id)||id<1)throw Error('문장 번호 오류');if(ids.has(id))throw Error('중복 문장 번호');ids.add(id);
   const s=newSentence(item.text,id);
@@ -468,7 +477,7 @@ on('clipPlay',async()=>{const c=clip();if(!c)return;const el=$('clipVideo'),{sta
  el.addEventListener('timeupdate',stop);try{await el.play();}catch{}});
 $('sceneReviewed').onchange=()=>{if(clip()){clip().scene.reviewed=$('sceneReviewed').checked;scheduleSave();renderStats();renderTimeline();}};
 window.addEventListener('beforeunload',e=>{if(recording||busy||saveTimer&&$('saveState').textContent==='저장 중…'){e.preventDefault();e.returnValue='';}});
-async function registerTools(){const mc=document.modelContext;if(!mc?.registerTool)return;try{await mc.registerTool({name:'get_longform_project',description:'Read the script, recordings and the video/narration timeline tracks of the current longform editing project.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({name:project.name,captions:captionsOn(),totalSeconds:total(),sentences:project.sentences.map(s=>({id:s.id,text:s.text,durationSeconds:duration(s)})),video:project.video.map((c,i)=>({slot:i+1,start:c.start,duration:c.duration,scene:c.scene})),audio:project.audio.map(c=>({sentenceId:c.sentenceId,start:c.start,duration:c.duration,offset:c.offset||0}))})});await mc.registerTool({name:'update_longform_scenes',description:'Apply validated page descriptions to video track clips by their 1-based timeline slot. Resets review status. Does not record audio, generate assets, move clips or export a video.',inputSchema:{type:'object',properties:{scenes:{type:'array',items:{type:'object',properties:{id:{type:'integer'},title:{type:'string'},subtitle:{type:'string'},layout:{type:'string',enum:['title','split','full']},motion:{type:'string',enum:['fade','zoom','slide','none']},background:{type:'string'},captions:{type:'boolean'}},required:['id'],additionalProperties:false}}},required:['scenes'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:input=>{if(busy||recording)throw Error('Editor is busy');if(!Array.isArray(input?.scenes))throw Error('scenes array required');const checked=input.scenes.map(validScene),seen=new Set();for(const v of checked){if(seen.has(v.id)||!project.video[v.id-1])throw Error('Unknown or duplicate clip slot');seen.add(v.id);if(v.asset&&!project.assets[v.asset])throw Error('Asset not loaded');}stopPlayback();for(const v of checked){const c=project.video[v.id-1],{id,...rest}=v;c.scene={...c.scene,...rest,reviewed:false};}scheduleSave();render();return{updated:checked.map(s=>s.id)};}});}catch(e){console.info('Optional agent tools unavailable',e);}}
+async function registerTools(){const mc=document.modelContext;if(!mc?.registerTool)return;try{await mc.registerTool({name:'get_longform_project',description:'Read the script, recordings and the video/narration timeline tracks of the current longform editing project.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({name:project.name,captions:captionsOn(),totalSeconds:total(),folders:[...(project.folders||[])],assets:Object.keys(project.assets),sentences:project.sentences.map(s=>({id:s.id,text:s.text,durationSeconds:duration(s)})),video:project.video.map((c,i)=>({slot:i+1,start:c.start,duration:c.duration,scene:c.scene})),audio:project.audio.map(c=>({sentenceId:c.sentenceId,start:c.start,duration:c.duration,offset:c.offset||0}))})});await mc.registerTool({name:'update_longform_scenes',description:'Apply validated page descriptions to video track clips by their 1-based timeline slot. Resets review status. Does not record audio, generate assets, move clips or export a video.',inputSchema:{type:'object',properties:{scenes:{type:'array',items:{type:'object',properties:{id:{type:'integer'},title:{type:'string'},subtitle:{type:'string'},layout:{type:'string',enum:['title','split','full']},motion:{type:'string',enum:['fade','zoom','slide','none']},background:{type:'string'},captions:{type:'boolean'}},required:['id'],additionalProperties:false}}},required:['scenes'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:input=>{if(busy||recording)throw Error('Editor is busy');if(!Array.isArray(input?.scenes))throw Error('scenes array required');const checked=input.scenes.map(validScene),seen=new Set();for(const v of checked){if(seen.has(v.id)||!project.video[v.id-1])throw Error('Unknown or duplicate clip slot');seen.add(v.id);if(v.asset&&!project.assets[v.asset])throw Error('Asset not loaded');}stopPlayback();for(const v of checked){const c=project.video[v.id-1],{id,...rest}=v;c.scene={...c.scene,...rest,reviewed:false};}scheduleSave();render();return{updated:checked.map(s=>s.id)};}});}catch(e){console.info('Optional agent tools unavailable',e);}}
 async function importAudioFiles(files){
  if(busy||recording||!files.length)return;setBusy(true);stopPlayback();
  try{let entries=[],script=[];
@@ -507,6 +516,31 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  move:(track,id,start)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)moveClip(c,start);},
  setLayerSpan:(index,id,start,end)=>setLayerSpan(project.video[index],id,start,end),
  trim:(track,id,edge,at)=>{const list=track==='audio'?project.audio:project.video,c=list.find(x=>x.id===id);if(c)trimRipple(list,c,edge,at,track==='audio'?takeRoom(c):Infinity);},
+ isAudioAsset:key=>assetType(key)==='audio',
+ folders:()=>project.folders||(project.folders=[]),
+ addFolder:name=>{const path=folderPath(name);if(!path)return null;project.folders??=[];
+  if(!project.folders.includes(path))project.folders.push(path);changed();render();return path;},
+ renameFolder:(from,to)=>{const path=folderPath(to);if(!path||path===from||!from.startsWith('media/'))return null;
+  if(folderTaken(path))return toast('같은 이름의 폴더가 이미 있습니다.'),null;
+  const swap=k=>k===from||k.startsWith(from+'/')?path+k.slice(from.length):k;
+  project.folders=(project.folders||[]).map(swap);
+  for(const key of Object.keys(project.assets))if(key.startsWith(from+'/'))rekeyAsset(key,swap(key));
+  clearMedia();changed();render();return path;},
+ removeFolder:path=>{if(!path?.startsWith('media/'))return;
+  if(Object.keys(project.assets).some(k=>k.startsWith(path+'/'))||(project.folders||[]).some(f=>f.startsWith(path+'/')))
+   return toast('폴더를 비운 뒤에 지울 수 있습니다.');
+  project.folders=(project.folders||[]).filter(f=>f!==path);changed();render();},
+ moveAsset:(key,folder)=>{if(!project.assets[key]||!folder)return;
+  const to=folder.replace(/\/+$/,'')+'/'+key.split('/').pop();
+  if(to===key)return;if(project.assets[to])return toast('그 폴더에 같은 이름의 소재가 있습니다.');
+  rekeyAsset(key,to);clearMedia();changed();render();},
+ addAudioAsset:async(key,start)=>{const blob=project.assets[key];if(!blob||busy||recording)return;
+  setBusy(true);stopPlayback();
+  try{const audio=await decodeAudio(blob);
+   const s=newSentence(key.split('/').pop().replace(/\.[^.]+$/,''),Math.max(0,...project.sentences.map(x=>x.id))+1);
+   s.audio=audio;project.sentences.push(s);placeTake(s,Math.max(0,Number(start)||0));
+   changed();render();toast('녹음을 타임라인에 올렸습니다.');}
+  catch(e){toast('녹음을 읽지 못했습니다: '+e.message);}finally{setBusy(false);}},
  dropTake:(sentenceId,start)=>{const s=sentenceById(sentenceId);if(!s?.audio?.length)return toast('먼저 이 문장을 녹음하세요.');placeTake(s,start);changed();render();},
  removeTake:id=>{project.audio=project.audio.filter(c=>c.id!==id);changed();render();},
  async startTimelineAudio(from){await audioContext();const b=narrationBuffer(from,total());
@@ -516,7 +550,6 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
   const shot=inside?shotOf(c,at-c.start,at):shotAt(at);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);await showMedia(shot.media,shot.scene,shot.sceneTime);if(version===editorDrawVersion)drawScene($('preview'),shot);},
  empty:()=>drawScene($('preview'),null),addScene:addFreeScene,deleteScene:()=>deleteClip(clipIndex),
  select:selectClip,
- captions:captionsOn,setCaptions:v=>{project.captions=!!v;changed();render();},
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
  prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
 });

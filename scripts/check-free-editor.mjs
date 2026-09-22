@@ -52,7 +52,12 @@ assert.equal(window.document.querySelector('.timeline-tools #edNewScene'),null,'
 assert.equal($('edAddMaterial'),null,'소재 추가 버튼은 타임라인 도구에서 빠졌다');
 assert.ok($('edTracks').querySelector('[data-add-track]'),'대신 마지막 줄의 ＋ 라인 생성으로 만든다');
 assert.equal($('edRemoveMaterial'),null,'제거는 각 라인의 X 버튼으로 한다');
-assert.equal(window.document.querySelector('.timeline-tools h2'),null,'전체 타임라인 머리글은 없앴다');
+assert.equal(window.document.querySelector('.timeline-tools'),null,'타임라인 도구 줄을 통째로 없앴다');
+assert.equal(window.document.getElementById('edTimelineFit'),null,'전체 맞춤 버튼도 없다');
+assert.equal(window.document.getElementById('edQuickDuplicate'),null,'복제·삭제는 도구 줄이 아니라 블록에 붙는다');
+assert.ok($('edTracks').querySelector('[data-bar-act="dup"]'),'블록에 복제 버튼이 붙는다');
+assert.ok($('edTracks').querySelector('[data-bar-act="fit"]'),'블록에 전체 맞춤 버튼이 붙는다');
+assert.ok($('edTracks').querySelector('[data-bar-act="del"]'),'블록에 삭제 버튼이 붙는다');
 assert.equal(window.document.getElementById('edTakes'),null,'녹음 칩 줄도 없앴다');
 assert.equal(window.document.getElementById('edZoom'),null,'확대 슬라이더 대신 눈금을 끌어 배율을 바꾼다');
 assert.equal(window.document.querySelector('.cloud-strip'),null,'아래 서버 저장 줄도 없앴다');

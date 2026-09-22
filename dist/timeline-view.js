@@ -36,10 +36,15 @@ export function createProjectTimeline(root,h){
  function dropAsset(key,x,y,el){hover(null);if(!layout||h.busy())return true;
   const{bar,lane}=under(x,y,el);if(!bar&&!lane)return false;
   h.stop();
+  // 녹음 소재는 조각과 상관없이 놓은 시각 그대로 녹음 줄에 올라간다.
+  if(h.isAudio(key)){h.dropAudio(key,Math.max(0,timeAt({clientX:x})));return true;}
   const empty=c=>c&&!c.layer.asset&&c.layer.kind!=='text';
   // 빈 칸에 놓으면 그 칸을 채우고, 이미 찬 칸이면 바꾸지 않고 소재 줄을 하나 더 만든다.
   if(bar){const c=layout.layers[+bar.dataset.clip];if(empty(c)){h.fillLayer(c.clipIndex,c.layer.id,key);return true;}}
-  const hit=locateTime(layout,timeAt({clientX:x}));if(!hit)return false;
+  // 조각 끝을 지나 놓아도 그냥 흘려보내지 않고 마지막 조각 끝에 붙인다.
+  const at=timeAt({clientX:x}),last=layout.clips.at(-1);
+  const hit=locateTime(layout,at)||(last?{index:layout.clips.length-1,local:Math.max(0,last.seconds-1e-6),time:last.end-1e-6}:null);
+  if(!hit)return false;
   if(lane){const slot=layout.layers.find(c=>c.lane===+lane.dataset.lane&&c.clipIndex===hit.index&&empty(c));
    if(slot){h.fillLayer(slot.clipIndex,slot.layer.id,key);return true;}}
   h.seek(hit.time);h.addAsset(key,hit.local,bar?null:lane?+lane.dataset.lane:null);return true;}
@@ -54,7 +59,7 @@ export function createProjectTimeline(root,h){
  for(let lane=layout.lanes-1;lane>=0;lane--){
   const rail=`<button class="rail-grip" data-track-drag="${lane}" title="끌어서 소재 순서 변경" aria-label="소재 ${lane+1} 순서 변경: 위아래로 끌거나 방향키 사용"><span aria-hidden="true">☰</span></button><input class="rail-name" data-track-name="${lane}" value="${esc(tracks[lane]?.name||'소재 '+(lane+1))}" maxlength="120" aria-label="소재 이름"><button class="rail-remove" data-track-remove="${lane}" title="소재 라인 삭제" aria-label="소재 ${lane+1} 삭제">×</button>`;
   const blocks=layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer;if(!l.asset&&l.kind!=='text')return '';
-   return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('');
+   return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><em class="bar-actions"><button data-bar-act="dup" data-bar-clip="${i}" title="복제" aria-label="복제">⧉</button><button data-bar-act="fit" data-bar-clip="${i}" title="전체 맞춤" aria-label="전체 맞춤">⇔</button><button data-bar-act="del" data-bar-clip="${i}" title="삭제" aria-label="삭제">×</button></em><i data-edge="end" aria-hidden="true"></i></div>`;}).join('');
   html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>${blocks||'<p class="track-empty">소재나 블록을 여기로 끌어다 놓으세요.</p>'}</div>`;}
   html+='<div class="track-row add-track-row"><button class="timeline-rail rail-add" data-add-track title="소재 라인을 하나 더 만듭니다">＋ 라인 생성</button></div>';
   if(!layout.layers.length&&!layout.takes.length&&!tracks.length)html+='<p class="timeline-empty">＋ 라인 생성으로 소재 라인을 만들고, 소재를 끌어다 놓으세요.</p>';
@@ -73,6 +78,9 @@ export function createProjectTimeline(root,h){
     if(!moved&&!inRail&&ev.type==='pointerup'){h.stop();h.seek(timeAt(ev));render();}};
    document.addEventListener('pointermove',move);document.addEventListener('pointerup',done);document.addEventListener('pointercancel',done);};
   root.querySelector('[data-add-track]').onclick=()=>{if(!h.busy())h.addTrack();};
+  // 블록 위의 작은 버튼들은 막대를 끌지 않도록 눌림을 가로챈다.
+  root.querySelectorAll('[data-bar-act]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
+   el.onclick=e=>{e.stopPropagation();const c=layout.layers[+el.dataset.barClip];h.stop();h.blockAction(c.clipIndex,c.layer.id,el.dataset.barAct);};});
   root.querySelectorAll('[data-take]').forEach(el=>{const entry=layout.takes.find(t=>t.clip.id===el.dataset.take);dragTake(el,entry);
    el.ondblclick=()=>{if(!h.busy()){h.stop();h.seek(entry.start);}};
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});
