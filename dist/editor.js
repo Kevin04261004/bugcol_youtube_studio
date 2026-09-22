@@ -159,6 +159,35 @@ export function createFreeEditor(h){
   bind('edTimelineFit',()=>{zoom=timeline.fit();$('edZoom').value=zoom;$('edTracks').parentElement.scrollLeft=0;renderTracks();});
 
  host.querySelectorAll('[data-pane]').forEach(b=>b.onclick=()=>{host.dataset.pane=b.dataset.pane;host.querySelectorAll('[data-pane]').forEach(x=>x.classList.toggle('active',x===b));});host.dataset.pane='media';const legacy=document.createElement('details');legacy.id='legacySettings';legacy.innerHTML='<summary>조각 화면 설정</summary>';legacy.append(document.querySelector('.inspector'));host.append(legacy);
- document.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||!h.visible())return;if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();$(e.shiftKey?'edRedo':'edUndo').click();}if(e.code==='Space'){e.preventDefault();$('edPlay').click();}if(e.key==='Delete')$('edDelete').click();});
+ host.querySelector('.properties-pane').append(legacy);
+ // Keep common commands beside the timeline; every button uses the existing edit history.
+ $('edAssets').insertAdjacentHTML('beforebegin','<input id="edMediaSearch" type="search" placeholder="소재 이름 검색" aria-label="소재 이름 검색"><p id="edSearchEmpty" class="ed-note" hidden>검색 결과가 없습니다.</p>');
+ function filterAssets(){const q=$('edMediaSearch').value.trim().toLocaleLowerCase();let count=0;host.querySelectorAll('[data-asset]').forEach(el=>{el.hidden=!el.dataset.asset.toLocaleLowerCase().includes(q);if(!el.hidden)count++;});$('edSearchEmpty').hidden=!q||count>0;}
+ $('edMediaSearch').oninput=filterAssets;
+ new MutationObserver(filterAssets).observe($('edAssets'),{childList:true});
+ $('edTimelineFit').insertAdjacentHTML('beforebegin','<button id="edQuickDuplicate" title="선택 소재 복제 (Ctrl/Cmd+D)">복제</button><button id="edQuickDelete" title="선택 소재 삭제 (Delete)">삭제</button>');
+ $('edQuickDuplicate').onclick=()=>$('edDuplicate').click();
+ $('edQuickDelete').onclick=()=>$('edDelete').click();
+ $('edPlay').insertAdjacentHTML('beforebegin','<button id="edPrevFrame" title="이전 프레임 (←)" aria-label="이전 프레임">‹</button>');
+ $('edPlay').insertAdjacentHTML('afterend','<button id="edNextFrame" title="다음 프레임 (→)" aria-label="다음 프레임">›</button>');
+ const stepFrame=amount=>{stop();seekProject(projectTime()+amount/getFrameRate());};
+ $('edPrevFrame').onclick=()=>stepFrame(-1);$('edNextFrame').onclick=()=>stepFrame(1);
+ $('edZoom').insertAdjacentHTML('beforebegin','<button id="edZoomOut" aria-label="타임라인 축소">−</button>');
+ $('edZoom').insertAdjacentHTML('afterend','<button id="edZoomIn" aria-label="타임라인 확대">＋</button>');
+ function changeZoom(delta){$('edZoom').value=clamp(Number($('edZoom').value)+delta,2,160);$('edZoom').oninput();}
+ $('edZoomOut').onclick=()=>changeZoom(-8);$('edZoomIn').onclick=()=>changeZoom(8);
+ document.addEventListener('keydown',e=>{
+  if(e.defaultPrevented||e.isComposing||h.isBusy()||!h.visible()||document.querySelector('dialog[open]')||e.target.closest('input,textarea,select,[contenteditable="true"]'))return;
+  const mod=e.ctrlKey||e.metaKey,key=e.key.toLowerCase();
+  if(mod&&key==='z'){e.preventDefault();$(e.shiftKey?'edRedo':'edUndo').click();return;}
+  if(mod&&key==='y'){e.preventDefault();$('edRedo').click();return;}
+  if(mod&&key==='d'){e.preventDefault();$('edDuplicate').click();return;}
+  if(mod||e.altKey)return;
+  if(e.code==='Space'){if(e.target.closest('button'))return;e.preventDefault();$('edPlay').click();}
+  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();stepFrame((e.key==='ArrowLeft'?-1:1)*(e.shiftKey?10:1));}
+  else if(e.key==='Home'){e.preventDefault();stop();seekProject(0);}
+  else if(e.key==='End'){e.preventDefault();stop();seekProject(layout().total);}
+  else if(e.key==='Delete'){e.preventDefault();$('edDelete').click();}
+ });
  return{refresh,stop,halt,paint,clearHistory(){undo=[];redo=[];active=null;lastScene=null;},isPlaying:()=>playing};
 }

@@ -1,4 +1,56 @@
 /* A single scroll surface keeps clips, narration and the ruler aligned. */
+/* Editing-only workbench: recording/export keep their existing page layouts. */
+body:has(#scenesView:not([hidden])){background:#111215}
+body:has(#scenesView:not([hidden])) main{padding:12px 14px}
+#freeEditor .editor-grid{border-radius:8px;background:#202126}
+#freeEditor .editor-pane{background:#202126;padding:16px}
+#freeEditor .ed-heading h2{font-size:15px}
+#freeEditor .ed-note{font-size:12px;line-height:1.6}
+#freeEditor .canvas-pane{background:#111215}
+#freeEditor .canvas-toolbar{border-bottom:1px solid #303139}
+#freeEditor #edStageWrap{background:#111215}
+#freeEditor #edMediaSearch{width:100%;margin-top:12px;font-size:14px;padding:10px}
+#freeEditor .asset-card span{font-size:12px;padding:9px}
+#freeEditor .asset-card:hover{outline:1px solid #c6f17e}
+#freeEditor .asset-card b{padding:3px 6px;font-size:14px}
+#freeEditor .prop-grid label,#freeEditor #edLayerProps label{font-size:12px}
+#freeEditor .ed-transport #edClock{font-size:12px}
+#freeEditor .ed-transport button{min-width:34px;min-height:34px}
+#freeEditor .timeline-tools{gap:6px;padding:10px 12px}
+#freeEditor .timeline-tools>.ed-note{display:none}
+#freeEditor .timeline-tools button{font-size:12px;min-height:34px}
+#freeEditor .timeline-zoom{gap:6px}
+#freeEditor .canvas-hint{font-size:12px;margin:6px 8px 10px}
+#freeEditor #edTracks .layer-bar.selected{border-color:#eee;box-shadow:inset 0 0 0 1px #eee}
+#freeEditor #edTracks .layer-bar>span,#freeEditor #edTracks .take-bar>span{font-size:12px}
+#freeEditor #edTracks .layer-bar i,#freeEditor #edTracks .take-bar i{opacity:.35}
+#freeEditor #edTracks .layer-bar:hover i,#freeEditor #edTracks .selected i,#freeEditor #edTracks .take-bar:hover i{opacity:1}
+@media(min-width:1000px) and (min-height:650px){
+ body:has(#scenesView:not([hidden])){overflow:hidden}
+ body:has(#scenesView:not([hidden])) .shell{height:100dvh;display:flex;flex-direction:column}
+ body:has(#scenesView:not([hidden])) header{flex:none;min-height:60px;padding:10px 18px}
+ body:has(#scenesView:not([hidden])) main{flex:1;min-height:0;display:flex;flex-direction:column}
+ body:has(#scenesView:not([hidden])) #scenesView{flex:1;min-height:0;display:flex;flex-direction:column}
+ body:has(#scenesView:not([hidden])) .cloud-strip{flex:none;margin:6px 0 0;padding:4px 8px;font-size:12px}
+ #scenesView #freeEditor{flex:1;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) minmax(210px,32vh);gap:10px}
+ #scenesView #freeEditor .editor-grid{min-height:0;grid-template-columns:240px minmax(0,1fr) 260px}
+ #scenesView #freeEditor .editor-pane{min-height:0;max-height:none;overflow:auto}
+ #scenesView #freeEditor .canvas-pane{min-height:0;overflow:hidden}
+ #scenesView #edStageWrap{min-height:0;overflow:hidden;padding:14px}
+ #scenesView #edStage{width:min(100%,calc((100dvh - 32vh - 255px)*16/9));max-height:100%;flex:none}
+ #scenesView #freeEditor .ed-timeline{margin:0;min-height:0;display:flex;flex-direction:column;border-radius:8px}
+ #scenesView #freeEditor .track-scroll{min-height:0;max-height:none;flex:1}
+ #scenesView #edTakes{max-height:64px;flex:none;padding:6px 12px}
+ #scenesView #legacySettings{margin-top:14px}
+}
+@media(max-width:800px){
+ #freeEditor .editor-tabs{position:sticky;top:0;z-index:8}
+ #freeEditor .ed-transport #edScrub{flex-basis:100%;order:2}
+ #freeEditor .timeline-tools button{min-height:40px}
+ #freeEditor .timeline-zoom{width:100%;justify-content:flex-end}
+ #freeEditor .timeline-zoom input{flex:1;max-width:160px}
+ #freeEditor .asset-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 #freeEditor .timeline-tools{flex-wrap:wrap}
 #freeEditor .track-scroll{max-height:360px;min-height:250px;overscroll-behavior-x:contain;scrollbar-color:#65717e #20252b}
 #edTracks .track-ruler{height:34px;position:sticky;top:0;z-index:5;background:#171b20;cursor:crosshair}

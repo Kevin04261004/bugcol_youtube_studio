@@ -117,6 +117,18 @@ assert.deepEqual([layer.x,layer.y,layer.w,layer.h,layer.rotation],[640,360,1280,
 assert.equal(layer.start,0);assert.equal(layer.end,0,'0=조각 끝 — 조각 길이가 바뀌어도 항상 끝까지 채운다');
 assert.equal(layer.keyframes.length,0,'애매하게 남은 키프레임도 함께 정리된다');
 
+// Workbench commands reuse real history, and search never mutates project assets.
+assert.ok($('edMediaSearch'));assert.ok($('edPrevFrame'));assert.ok($('edNextFrame'));
+$('edScrub').value=String(read().video.at(-1).start);$('edScrub').dispatchEvent(new window.Event('input'));
+const beforeTime=Number($('edScrub').value);$('edNextFrame').click();
+assert.ok(Math.abs(Number($('edScrub').value)-beforeTime-1/60)<.001,'frame step follows selected FPS');
+$('edPrevFrame').click();assert.ok(Math.abs(Number($('edScrub').value)-beforeTime)<.001);
+const beforeZoom=Number($('edZoom').value);$('edZoomIn').click();
+assert.equal(Number($('edZoom').value),Math.min(160,beforeZoom+8));
+$('edMediaSearch').value='__no_such_media__';$('edMediaSearch').dispatchEvent(new window.Event('input'));
+assert.equal($('edSearchEmpty').hidden,false);assert.ok([...$('edAssets').querySelectorAll('[data-asset]')].every(el=>el.hidden));
+$('edMediaSearch').value='';$('edMediaSearch').dispatchEvent(new window.Event('input'));assert.equal($('edSearchEmpty').hidden,true);
+assert.ok($('legacySettings').closest('.properties-pane'),'legacy settings remain accessible');
 assert.deepEqual(errors,[]);
 console.log('PASS clip-scoped layer edits, two keyframes, duplicate, undo/redo, absolute track placement, v2 project ZIP round trip, per-clip duration, version:1 project migration on open, and one-tap fill-clip for a layer');
 await window.happyDOM.abort();
