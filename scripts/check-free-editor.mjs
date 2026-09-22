@@ -49,7 +49,13 @@ assert.equal($('edTracks').querySelectorAll('[data-take]').length,0,'녹음이 �
 assert.equal(window.document.getElementById('edTimelineScript'),null,'타임라인의 대사 가져오기 버튼은 없앴다');
 assert.equal(window.document.getElementById('edTimelineAudio'),null,'타임라인의 녹음 가져오기 버튼도 없앴다');
 assert.equal(window.document.querySelector('.timeline-tools #edNewScene'),null,'빈 조각·조각 내리기는 타임라인에서 빠졌다');
-assert.ok($('edAddMaterial'),'소재 추가 버튼이 있다');assert.equal($('edRemoveMaterial'),null,'제거는 각 라인의 X 버튼으로 한다');
+assert.equal($('edAddMaterial'),null,'소재 추가 버튼은 타임라인 도구에서 빠졌다');
+assert.ok($('edTracks').querySelector('[data-add-track]'),'대신 마지막 줄의 ＋ 라인 생성으로 만든다');
+assert.equal($('edRemoveMaterial'),null,'제거는 각 라인의 X 버튼으로 한다');
+assert.equal(window.document.querySelector('.timeline-tools h2'),null,'전체 타임라인 머리글은 없앴다');
+assert.equal(window.document.getElementById('edTakes'),null,'녹음 칩 줄도 없앴다');
+assert.equal(window.document.getElementById('edZoom'),null,'확대 슬라이더 대신 눈금을 끌어 배율을 바꾼다');
+assert.equal(window.document.querySelector('.cloud-strip'),null,'아래 서버 저장 줄도 없앴다');
 
 // 프로젝트 ZIP 왕복 — 트랙이 그대로 살아 돌아온다
 const before=read(),manifest={version:2,name:'복원 테스트',sentences:before.sentences.map(s=>({id:s.id,text:s.text,audio:null})),
@@ -123,8 +129,20 @@ $('edScrub').value=String(read().video.at(-1).start);$('edScrub').dispatchEvent(
 const beforeTime=Number($('edScrub').value);$('edNextFrame').click();
 assert.ok(Math.abs(Number($('edScrub').value)-beforeTime-1/60)<.001,'frame step follows selected FPS');
 $('edPrevFrame').click();assert.ok(Math.abs(Number($('edScrub').value)-beforeTime)<.001);
-const beforeZoom=Number($('edZoom').value);$('edZoomIn').click();
-assert.equal(Number($('edZoom').value),Math.min(160,beforeZoom+8));
+// 확대·축소는 시간 눈금을 좌우로 끌어서 한다
+const ruler=$('edTracks').querySelector('.track-ruler'),barWidth=()=>parseFloat($('edTracks').querySelector('[data-clip]').style.width);
+const rulerDrag=(from,to)=>{const down=new window.Event('pointerdown',{bubbles:true});down.clientX=from;ruler.dispatchEvent(down);
+ for(const x of [from+(to-from)/2,to]){const mv=new window.Event('pointermove',{bubbles:true});mv.clientX=x;window.document.dispatchEvent(mv);}
+ const up=new window.Event('pointerup',{bubbles:true});up.clientX=to;window.document.dispatchEvent(up);};
+const zoomStart=barWidth();
+rulerDrag(400,540);
+const zoomedIn=barWidth();
+assert.ok(zoomedIn>zoomStart*1.2,'눈금을 오른쪽으로 끌면 타임라인이 늘어난다');
+rulerDrag(540,400);
+assert.ok(barWidth()<zoomedIn*.9,'왼쪽으로 끌면 다시 줄어든다');
+{const before=barWidth(),tap=new window.Event('pointerdown',{bubbles:true});tap.clientX=400;ruler.dispatchEvent(tap);
+ const up=new window.Event('pointerup',{bubbles:true});up.clientX=402;window.document.dispatchEvent(up);
+ assert.equal(barWidth(),before,'끌지 않고 누르기만 하면 배율은 그대로 — 재생 머리만 움직인다');}
 $('edMediaSearch').value='__no_such_media__';$('edMediaSearch').dispatchEvent(new window.Event('input'));
 assert.equal($('edSearchEmpty').hidden,false);assert.ok([...$('edAssets').querySelectorAll('[data-asset]')].every(el=>el.hidden));
 $('edMediaSearch').value='';$('edMediaSearch').dispatchEvent(new window.Event('input'));assert.equal($('edSearchEmpty').hidden,true);

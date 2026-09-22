@@ -56,9 +56,23 @@ export function createProjectTimeline(root,h){
   const blocks=layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer;if(!l.asset&&l.kind!=='text')return '';
    return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('');
   html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>${blocks||'<p class="track-empty">소재나 블록을 여기로 끌어다 놓으세요.</p>'}</div>`;}
-  if(!layout.layers.length&&!layout.takes.length&&!tracks.length)html+='<p class="timeline-empty">소재를 가져와 누르면 여기에 놓이고, 대사를 녹음하면 녹음 트랙이 생깁니다.</p>';
+  html+='<div class="track-row add-track-row"><button class="timeline-rail rail-add" data-add-track title="소재 라인을 하나 더 만듭니다">＋ 라인 생성</button></div>';
+  if(!layout.layers.length&&!layout.takes.length&&!tracks.length)html+='<p class="timeline-empty">＋ 라인 생성으로 소재 라인을 만들고, 소재를 끌어다 놓으세요.</p>';
   root.innerHTML=html;
-  root.querySelector('.track-ruler').onpointerdown=e=>{if(h.busy()||e.clientX-root.getBoundingClientRect().left<RAIL)return;h.stop();const ruler=e.currentTarget;ruler.setPointerCapture?.(e.pointerId);dragging=true;h.seek(timeAt(e));const move=ev=>h.seek(timeAt(ev));const done=()=>{dragging=false;ruler.removeEventListener('pointermove',move);ruler.removeEventListener('pointerup',done);ruler.removeEventListener('pointercancel',done);render();};ruler.addEventListener('pointermove',move);ruler.addEventListener('pointerup',done);ruler.addEventListener('pointercancel',done);};
+  // 시간 눈금을 좌우로 끌면 배율이 바뀐다. 손가락·커서 아래의 시각은 제자리에 붙들어 둔다. 끌지 않고 누르기만 하면 재생 머리가 움직인다.
+  root.querySelector('.track-ruler').onpointerdown=e=>{if(h.busy())return;
+   const startX=e.clientX,startZoom=zoom,inRail=e.clientX-root.getBoundingClientRect().left<RAIL;
+   const view=()=>scroll.getBoundingClientRect().left;
+   const anchor=Math.max(0,(startX-view()+scroll.scrollLeft-RAIL)/startZoom);
+   let moved=false;e.preventDefault();
+   const move=ev=>{const dx=ev.clientX-startX;
+    if(!moved&&Math.abs(dx)<5)return;
+    moved=true;h.setZoom(clamp(startZoom*Math.pow(1.012,dx),2,160));
+    scroll.scrollLeft=Math.max(0,RAIL+anchor*zoom-(startX-view()));};
+   const done=ev=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',done);document.removeEventListener('pointercancel',done);
+    if(!moved&&!inRail&&ev.type==='pointerup'){h.stop();h.seek(timeAt(ev));render();}};
+   document.addEventListener('pointermove',move);document.addEventListener('pointerup',done);document.addEventListener('pointercancel',done);};
+  root.querySelector('[data-add-track]').onclick=()=>{if(!h.busy())h.addTrack();};
   root.querySelectorAll('[data-take]').forEach(el=>{const entry=layout.takes.find(t=>t.clip.id===el.dataset.take);dragTake(el,entry);
    el.ondblclick=()=>{if(!h.busy()){h.stop();h.seek(entry.start);}};
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});

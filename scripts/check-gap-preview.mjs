@@ -24,6 +24,7 @@ window.eval('(async()=>{'+result.outputFiles[0].text+'})()');
 await new Promise(r=>setTimeout(r,120));
 const $=id=>window.document.getElementById(id),read=()=>registered.get('get_longform_project').execute();
 const settle=()=>new Promise(r=>setTimeout(r,40));
+const addTrack=()=>$('edTracks').querySelector('[data-add-track]').click();
 const lastPreviewFill=()=>[...painted].reverse().find(p=>p.canvas==='preview')?.fill;
 
 // 조각 둘을 올리고 배경색을 다르게 해 어느 쪽이 그려지는지 구분할 수 있게 한다
@@ -87,7 +88,7 @@ assert.equal(decoded.duration,2);
 // Empty rows have no placeholder blocks, persist after deletion, and accept block transfers.
 {
  const before=read().video[1].scene.layers?.length||0;
- $('edAddMaterial').click();
+ addTrack();
  assert.equal(read().video[1].scene.layers.length,before);
  assert.equal(read().video[1].scene.materialTracks.length,1);
  assert.equal($('edTracks').querySelectorAll('.layer-bar').length,0);
@@ -97,7 +98,7 @@ assert.equal(decoded.duration,2);
  row.dispatchEvent(drop);await new Promise(r=>setTimeout(r,300));
  assert.equal(read().video[1].scene.layers[0].asset,'media/loop.gif');
  assert.equal(read().video[1].scene.layers[0].lane,0);
- $('edAddMaterial').click();
+ addTrack();
  assert.equal(read().video[1].scene.materialTracks.length,2);
  assert.equal(read().video[1].scene.layers.length,1);
  let rail=$('edTracks').querySelector('[data-track-name="1"]');

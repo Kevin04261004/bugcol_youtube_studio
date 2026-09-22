@@ -31,7 +31,6 @@ body:has(#scenesView:not([hidden])) main{padding:12px 14px}
  body:has(#scenesView:not([hidden])) header{flex:none;min-height:60px;padding:10px 18px}
  body:has(#scenesView:not([hidden])) main{flex:1;min-height:0;display:flex;flex-direction:column}
  body:has(#scenesView:not([hidden])) #scenesView{flex:1;min-height:0;display:flex;flex-direction:column}
- body:has(#scenesView:not([hidden])) .cloud-strip{flex:none;margin:6px 0 0;padding:4px 8px;font-size:12px}
  #scenesView #freeEditor{flex:1;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) minmax(210px,32vh);gap:10px}
  #scenesView #freeEditor .editor-grid{min-height:0;grid-template-columns:240px minmax(0,1fr) 260px}
  #scenesView #freeEditor .editor-pane{min-height:0;max-height:none;overflow:auto}
@@ -40,7 +39,6 @@ body:has(#scenesView:not([hidden])) main{padding:12px 14px}
  #scenesView #edStage{width:min(100%,calc((100dvh - 32vh - 255px)*16/9));max-height:100%;flex:none}
  #scenesView #freeEditor .ed-timeline{margin:0;min-height:0;display:flex;flex-direction:column;border-radius:8px}
  #scenesView #freeEditor .track-scroll{min-height:0;max-height:none;flex:1}
- #scenesView #edTakes{max-height:64px;flex:none;padding:6px 12px}
  #scenesView #legacySettings{margin-top:14px}
 }
 @media(max-width:800px){
@@ -75,10 +73,6 @@ body:has(#scenesView:not([hidden])) main{padding:12px 14px}
 #edTracks .track-empty{top:19px}
 #edTracks .timeline-empty{top:150px;max-width:330px;font-size:12px}
 /* 녹음한 문장 가운데 아직 트랙에 없는 것. 끌어다 녹음 트랙에 놓는다. */
-#freeEditor .take-strip{display:flex;gap:8px;padding:10px 16px;overflow:auto;border-bottom:1px solid #34383f;align-items:center}
-#freeEditor .take-chip{display:flex;align-items:center;gap:6px;min-width:150px;max-width:220px;background:#263329;border-color:#46603f;color:#cfe6cd;cursor:grab;text-align:left}
-#freeEditor .take-chip p{margin:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#freeEditor .take-strip .ed-note{margin:0;font-size:10px}
 @media(max-width:800px){
  #freeEditor .timeline-tools h2{width:auto;margin-right:auto!important}
  #freeEditor .timeline-tools{gap:5px}
@@ -101,3 +95,9 @@ body:has(#scenesView:not([hidden])) main{padding:12px 14px}
 /* 빈 칸은 이미지를 받기 전이라는 걸 한눈에 보여 준다. */
 #freeEditor #edTracks .layer-bar.is-empty{background:#2b2738;border:1px dashed #7a6aa6;color:#c3b8e4}
 #freeEditor #edTracks .layer-bar.drop-hot{border-color:#c6f17e;background:#3b4a35;box-shadow:inset 0 0 0 1px #c6f17e}
+/* 마지막 줄에서 소재 라인을 하나 더 만든다. */
+#edTracks .add-track-row{height:34px;background:none}
+#edTracks .rail-add{justify-content:center;background:#222a32!important;border:1px dashed #4a5561;border-right:1px solid #3b444e;color:#c6f17e;font-size:11px;font-weight:600;cursor:pointer}
+#edTracks .rail-add:hover{background:#2b3540!important;border-color:#c6f17e}
+/* 시간 눈금은 좌우로 끌어 배율을 바꾼다. */
+#edTracks .track-ruler{cursor:ew-resize}

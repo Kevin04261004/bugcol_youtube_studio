@@ -66,7 +66,7 @@ assert.equal(rows().length,0);
 
 // 지금 작업을 새 폴더로 올린다
 $('newFolderName').value='첫 작업';$('newCloudFolder').click();await wait(700);
-assert.match($('cloudStatus').textContent,/서버 저장 완료/);
+assert.match($('syncBadge').textContent,/서버 저장 완료/,'아래 저장 줄을 걷어낸 뒤에는 작업 폴더 옆 배지가 상태를 알린다');
 assert.match($('folderStatus').textContent,/서버 저장 완료/,'상태가 대화상자 안에도 보여야 한다');
 assert.equal($('folderStatus').hidden,false);
 assert.deepEqual(names(),['▣ 첫 작업']);
