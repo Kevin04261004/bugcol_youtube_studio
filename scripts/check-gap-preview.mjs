@@ -3,12 +3,14 @@ import {build} from 'esbuild';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {gifBytes,decodeGif} from '../dist/gif.js';
+import {zipSync,strToU8} from 'fflate';
 const window=new Window({url:'https://example.test',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
 window.document.write(fs.readFileSync('dist/index.html','utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
 // 캔버스에 실제로 칠해진 배경색을 받아 적는다. 어느 조각이 그려졌는지는 이걸로만 알 수 있다.
 const painted=[];
 window.HTMLCanvasElement.prototype.getContext=function(){const self=this;
- return new Proxy({measureText:t=>({width:t.length*12}),fillRect(x,y,w,h){if(w>=1280&&h>=720)painted.push({canvas:self.id,fill:this.fillStyle});}},
+ return new Proxy({measureText:t=>({width:t.length*12}),fillRect(x,y,w,h){if(w>=1280&&h>=720)painted.push({canvas:self.id,fill:this.fillStyle});
+   if(w===1170)painted.push({canvas:self.id,caption:true});}},
   {get:(o,k)=>k in o?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true;}});};
 window.confirm=()=>true;
 window.structuredClone=structuredClone;
@@ -112,5 +114,39 @@ assert.deepEqual(errors,[]);
  assert.equal(moved.duration,5,'조각이 늘어나 옮긴 소재를 계속 품는다');
 }
 
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, and a clip-filling layer still drags freely with the clip growing to hold it');
+
+// 자막은 조각마다가 아니라 프로젝트 전체 스위치 하나로 켜고 끈다
+{
+ const capBtn=$('edCaptionsAll');
+ assert.ok(capBtn,'타임라인 도구에 전체 자막 스위치가 있다');
+ assert.equal(window.document.getElementById('edCaptions'),null,'조각별 자막 체크는 없어졌다');
+ assert.equal(window.document.getElementById('sceneCaptions'),null,'옛 인스펙터의 자막 체크도 없어졌다');
+ assert.equal(read().captions,true,'처음에는 켜져 있다');
+ assert.match(capBtn.textContent,/켜짐/);
+ assert.equal(capBtn.getAttribute('aria-pressed'),'true');
+
+ capBtn.click();
+ assert.equal(read().captions,false,'한 번 누르면 영상 전체에서 꺼진다');
+ assert.match($('edCaptionsAll').textContent,/꺼짐/);
+ assert.equal($('edCaptionsAll').getAttribute('aria-pressed'),'false');
+
+ // 조각을 새로 만들어도 그 조각만 따로 켜지거나 꺼지지 않는다
+ $('edNewScene').click();
+ assert.equal(read().captions,false,'새 조각을 만들어도 전체 설정 그대로다');
+ assert.ok(read().video.every(c=>c.scene.captions===undefined),'조각에는 자막 설정이 남지 않는다');
+
+ // 껐다 켠 상태가 프로젝트 ZIP 으로 오갈 때 그대로 남는다
+ const saved=read();
+ const zip=zipSync({'project.json':strToU8(JSON.stringify({version:2,name:'자막 테스트',captions:false,
+  sentences:saved.sentences.map(x=>({id:x.id,text:x.text,audio:null})),
+  video:saved.video.map(c=>({id:'v'+c.slot,start:c.start,duration:c.duration,scene:c.scene})),audio:[]}))});
+ await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
+ assert.equal(read().captions,false,'꺼 둔 설정이 ZIP 에서 돌아와도 유지된다');
+ assert.match($('edCaptionsAll').textContent,/꺼짐/);
+
+ $('edCaptionsAll').click();
+ assert.equal(read().captions,true,'다시 누르면 켜진다');
+}
+
+console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, and captions are one project-wide switch');
 await window.happyDOM.abort();

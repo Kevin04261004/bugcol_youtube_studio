@@ -25,7 +25,7 @@ assert.equal(read().video.length,0,'대본은 영상 트랙을 건드리지 않�
 // 영상 조각을 두 개 올리고 각각 따로 편집한다
 $('edNewScene').click();$('edNewScene').click();
 assert.equal(read().video.length,2);
-assert.equal(read().video[0].scene.captions,false,'빈 조각은 자막을 끄고 시작한다');
+assert.equal(read().captions,true,'자막은 프로젝트 전체 스위치 하나로 켜고 끈다');
 const pickClip=i=>$('edScenes').querySelector('[data-scene="'+i+'"]').click();
 pickClip(0);
 $('edAddText').click();assert.equal(read().video[0].scene.layers.length,1);
