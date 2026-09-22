@@ -52,7 +52,7 @@ export function createProjectTimeline(root,h){
   // 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다. 레이어 배열의 끝이 곧 맨 위 칸이다.
  const tracks=materialTracks(h.video()[h.selected()]?.scene||{});
  for(let lane=layout.lanes-1;lane>=0;lane--){
-  const rail=`<input class="rail-name" data-track-name="${lane}" value="${esc(tracks[lane]?.name||'소재 '+(lane+1))}" maxlength="120" aria-label="소재 이름"><button class="rail-move" data-track-move="up" data-track="${lane}" title="앞으로 (위 칸)" aria-label="앞으로">↑</button><button class="rail-move" data-track-move="down" data-track="${lane}" title="뒤로 (아래 칸)" aria-label="뒤로">↓</button>`;
+  const rail=`<button class="rail-grip" data-track-drag="${lane}" title="끌어서 소재 순서 변경" aria-label="소재 ${lane+1} 순서 변경: 위아래로 끌거나 방향키 사용"><span aria-hidden="true">☰</span></button><input class="rail-name" data-track-name="${lane}" value="${esc(tracks[lane]?.name||'소재 '+(lane+1))}" maxlength="120" aria-label="소재 이름"><button class="rail-remove" data-track-remove="${lane}" title="소재 라인 삭제" aria-label="소재 ${lane+1} 삭제">×</button>`;
   const blocks=layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer;if(!l.asset&&l.kind!=='text')return '';
    return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('');
   html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>${blocks||'<p class="track-empty">소재나 블록을 여기로 끌어다 놓으세요.</p>'}</div>`;}
@@ -63,7 +63,23 @@ export function createProjectTimeline(root,h){
    el.ondblclick=()=>{if(!h.busy()){h.stop();h.seek(entry.start);}};
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});
   root.querySelectorAll('[data-track-name]').forEach(el=>{el.onpointerdown=e=>{e.stopPropagation();h.selectLane(+el.dataset.trackName);};el.onchange=()=>h.renameTrack(+el.dataset.trackName,el.value);});
-  root.querySelectorAll('[data-track-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();el.onclick=()=>h.reorderTrack(+el.dataset.track,el.dataset.trackMove);});
+  root.querySelectorAll('[data-track-remove]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();el.onclick=e=>{e.stopPropagation();h.removeTrack(+el.dataset.trackRemove);};});
+  root.querySelectorAll('[data-track-drag]').forEach(el=>{
+   const lane=+el.dataset.trackDrag;
+   el.onkeydown=e=>{if(!['ArrowUp','ArrowDown'].includes(e.key)||h.busy())return;e.preventDefault();e.stopPropagation();
+    const to=lane+(e.key==='ArrowUp'?1:-1);h.reorderTrack(lane,to);root.querySelector(`[data-track-drag="${to}"]`)?.focus();};
+   el.onpointerdown=e=>{e.stopPropagation();if(h.busy()||(e.button!=null&&e.button!==0))return;e.preventDefault();
+    dragging=true;h.stop();let target=lane;const row=el.closest('[data-lane]');row.classList.add('row-dragging');
+    el.setAttribute('aria-pressed','true');try{el.setPointerCapture?.(e.pointerId);}catch{}
+    const move=ev=>{const rect=scroll.getBoundingClientRect();if(ev.clientY<rect.top+35)scroll.scrollTop-=14;else if(ev.clientY>rect.bottom-25)scroll.scrollTop+=14;
+     const rows=[...root.querySelectorAll('[data-lane]')];rows.forEach(r=>r.classList.remove('row-drop-target'));
+     const hit=rows.find(r=>{const box=r.getBoundingClientRect();return ev.clientY>=box.top&&ev.clientY<box.bottom;});
+     if(hit){target=+hit.dataset.lane;if(target!==lane)hit.classList.add('row-drop-target');}};
+    const done=ev=>{el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);el.removeEventListener('lostpointercapture',done);
+     dragging=false;if(ev.type==='pointerup')h.reorderTrack(lane,target);render();root.querySelector(`[data-track-drag="${ev.type==='pointerup'?target:lane}"]`)?.focus();};
+    el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);el.addEventListener('lostpointercapture',done);
+   };
+  });
   root.querySelectorAll('[data-lane]').forEach(el=>{el.onpointerdown=e=>{if(e.target.closest('[data-clip],input,button'))return;h.selectLane(+el.dataset.lane);};});
   // 빈 소재 칸 위에 떨어뜨리면 그 칸이 채워진다.
   root.querySelectorAll('[data-clip]').forEach(el=>{
@@ -72,20 +88,20 @@ export function createProjectTimeline(root,h){
    el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');
     const key=e.dataTransfer.getData('text/asset');if(key)dropAsset(key,e.clientX,e.clientY,el);});
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
-   el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
+   el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;dragging=true;h.stop();h.selectLayer(c.clipIndex,l.id,c.start);selected();
     if(l.locked){dragging=false;return;}
     // 갓 넣은 영상은 아직 레이어가 아니라 끌 수 없다. 처음 끌 때 레이어로 바꿔 주고 그대로 이어서 끈다.
     if(l.legacy){const live=h.convertLayer(c.clipIndex);if(!live){dragging=false;return;}l=live;h.selectLayer(c.clipIndex,l.id,c.start);}
-    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}let targetLane=c.lane;const originTop=el.parentElement.getBoundingClientRect().top;const origin=e.clientX,edge=e.target.dataset.edge,a=c.start-c.clipStart,b=c.end-c.clipStart,d=c.clipEnd-c.clipStart;
+    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}let targetLane=c.lane;const originTop=el.parentElement.getBoundingClientRect().top;const origin=e.clientX,edge=e.target.dataset.edge,a=c.start,b=c.end;
     const move=ev=>{const delta=(ev.clientX-origin)/zoom,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
-     if(edge==='start')l.start=clamp(snap(a+delta),0,b-frame);
-     // 소재를 조각 밖으로 끌어도 멈추지 않는다. 대신 조각이 늘어나 소재를 계속 품는다.
-     else if(edge==='end')l.end=Math.max(a+frame,snap(b+delta));
-     else{const length=b-a;l.start=Math.max(0,snap(a+delta));l.end=l.start+length;}
+     let start=a,end=b;
+     if(edge==='start')start=clamp(a+snap(delta),0,b-frame);
+     else if(edge==='end')end=Math.max(a+frame,b+snap(delta));
+     else{start=Math.max(0,a+snap(delta));end=start+(b-a);}
+     h.setLayerSpan(c.clipIndex,l.id,start,end);
      if(!edge){const row=[...root.querySelectorAll('[data-lane]')].find(row=>{const r=row.getBoundingClientRect();return ev.clientY>=r.top&&ev.clientY<r.bottom;});
       if(row){targetLane=+row.dataset.lane;el.style.transform='translateY('+(row.getBoundingClientRect().top-originTop)+'px)';el.style.zIndex='5';}}
-     h.growClip(c.clipIndex,l.end);
-     el.style.left=x(c.clipStart+l.start)+'px';el.style.width=((l.end||d)-l.start)*zoom+'px';
+     el.style.left=x(start)+'px';el.style.width=(end-start)*zoom+'px';
     };
     const done=()=>{if(!edge)h.moveLayerToLane(c.clipIndex,l.id,targetLane);dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
    };

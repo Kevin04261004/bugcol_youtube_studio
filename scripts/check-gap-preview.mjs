@@ -131,9 +131,11 @@ assert.equal(decoded.duration,2);
  const restored=validScene({id:1,...JSON.parse(JSON.stringify(read().video[1].scene))});
  assert.equal(restored.materialTracks[1].name,'배경 그림');
  assert.equal(restored.layers.length,0);
- $('edTracks').querySelector('[data-track="1"][data-track-move="down"]').click();
+ $('edTracks').querySelectorAll('[data-lane]').forEach(row=>{const n=+row.dataset.lane;row.getBoundingClientRect=()=>({top:n*60,bottom:n*60+60});});
+ const grip=$('edTracks').querySelector('[data-track-drag="1"]');
+ for(const [type,y]of [['pointerdown',70],['pointermove',10],['pointerup',10]]){const e=new window.Event(type,{bubbles:true});Object.assign(e,{clientX:12,clientY:y,pointerId:2});grip.dispatchEvent(e);}
  assert.equal(read().video[1].scene.materialTracks[0].name,'배경 그림');
- $('edRemoveMaterial').click();
+ $('edTracks').querySelector('[data-track-remove="0"]').click();
  assert.equal(read().video[1].scene.materialTracks.length,1,'explicit row removal still works');
 }
 
@@ -170,6 +172,31 @@ assert.deepEqual(errors,[]);
  assert.equal(moved.duration,5,'조각이 늘어나 옮긴 소재를 계속 품는다');
 }
 
+
+// Regression: growing then shrinking A must never alter B; B can move before its old container start.
+{
+ const {timelineLayout}=await import('../dist/project-timeline.js');
+ const barFor=id=>{const state=read(),map=timelineLayout(state.video,state.audio);return $('edTracks').querySelector(`[data-clip="${map.layers.findIndex(c=>c.layer.id===id)}"]`);};
+ const gesture=(target,deltas)=>{const down=new window.Event('pointerdown',{bubbles:true});Object.assign(down,{clientX:400,pointerId:3});target.dispatchEvent(down);
+  const bar=target.closest('.layer-bar');for(const delta of deltas){const move=new window.Event('pointermove',{bubbles:true});Object.assign(move,{clientX:400+delta,pointerId:3});bar.dispatchEvent(move);}
+  const up=new window.Event('pointerup',{bubbles:true});Object.assign(up,{pointerId:3});bar.dispatchEvent(up);};
+ $('edNewScene').click();$('edAddText').click();const ai=read().video.length-1,aid=read().video[ai].scene.layers[0].id;
+ $('edNewScene').click();$('edAddText').click();$('edAddText').click();
+ const bi=read().video.length-1,before=structuredClone(read().video[bi]),bid=before.scene.layers[0].id,sibling=before.scene.layers[1].id;
+ gesture(barFor(aid).querySelector('[data-edge="end"]'),[320,64]);
+ assert.deepEqual(structuredClone(read().video[bi]),before,'A resize gesture must not shift or shorten B');
+ gesture(barFor(aid).querySelector('[data-edge="end"]'),[-64]);
+ assert.deepEqual(structuredClone(read().video[bi]),before,'shrinking A later must also leave B intact');
+ const spans=()=>timelineLayout(read().video,read().audio).layers;
+ const siblingBefore=spans().find(c=>c.layer.id===sibling);
+ gesture(barFor(bid),[-128]);
+ let moved=spans().find(c=>c.layer.id===bid),untouched=spans().find(c=>c.layer.id===sibling);
+ assert.equal(moved.start,before.start-2,'B can move left across its former container boundary');
+ assert.equal(moved.end-moved.start,3,'moving preserves B duration');
+ assert.equal(untouched.start,siblingBefore.start);assert.equal(untouched.end,siblingBefore.end,'implicit full-span sibling must not grow');
+ $('edUndo').click();assert.equal(spans().find(c=>c.layer.id===bid).start,before.start);
+ $('edRedo').click();assert.equal(spans().find(c=>c.layer.id===bid).start,before.start-2);
+}
 
 // 자막은 조각마다가 아니라 프로젝트 전체 스위치 하나로 켜고 끈다
 {

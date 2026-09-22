@@ -23,3 +23,16 @@ export function ensureMaterialTracks(scene){
  return scene.materialTracks;
 }
 export function sortMaterialLayers(scene){scene.layers.sort((a,b)=>(a.lane??0)-(b.lane??0));}
+
+// Set one block's absolute span. Containers may grow, but no neighbouring block moves or resizes.
+export function setLayerSpan(clip,id,start,end){
+ const layer=clip?.scene?.layers?.find(l=>l.id===id);
+ if(!layer||layer.locked||!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start)return;
+ const oldStart=clip.start,oldDuration=clip.duration,origin=Math.min(oldStart,start),shift=oldStart-origin;
+ const duration=Math.max(oldStart+oldDuration,end)-origin;
+ if(shift||duration!==oldDuration){
+  for(const l of clip.scene.layers){const stop=l.end||oldDuration;l.start=(l.start||0)+shift;l.end=stop+shift;}
+  clip.start=origin;clip.duration=duration;
+ }
+ layer.start=start-clip.start;layer.end=end-clip.start;
+}

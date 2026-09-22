@@ -1,5 +1,5 @@
 import {createFreeEditor} from './editor.js';
-import {drawLayers,layerVideoTime} from './editor-engine.js';
+import {drawLayers,layerVideoTime,setLayerSpan} from './editor-engine.js';
 import {getFrameRate} from './fps.js';
 import {createGifWriter,decodeGif,gifFrameAt} from './gif.js';
 import{createCloudEditor}from'./cloud.js';
@@ -138,7 +138,18 @@ g.save();g.globalAlpha=move.alpha;g.translate(move.shiftX,0);paintScene(g,shot);
 const EMPTY_SCENE={background:WHITE,layout:'full'};
 // 조각 c 의 local 초 지점을 그린 한 컷. at 은 그 순간의 타임라인 절대 시각으로, 자막은 여기에 맞춰 고른다.
 // c 가 없으면 영상 트랙이 비는 구간이라 배경만 남긴다.
-function shotOf(c,local,at,media=null){const scene=c?.scene||EMPTY_SCENE,take=clipsAt(project.audio,at).at(-1);
+function shotOf(c,local,at,media=null){let scene=c?.scene||EMPTY_SCENE;const take=clipsAt(project.audio,at).at(-1);
+ // Independent layer clips can overlap; render their blocks together instead of hiding an earlier container.
+ if(c&&Array.isArray(scene.layers)){
+  const sources=clipsAt(project.video,at).filter(other=>other!==c&&Array.isArray(other.scene.layers));
+  if(sources.length){const layers=scene.layers.map((l,i)=>({...l,lane:l.lane??i}));
+   for(const other of sources)for(const [i,l]of other.scene.layers.entries()){
+    const start=other.start+(l.start||0),end=other.start+(l.end||other.duration);
+    if(at>=start&&at<end)layers.push({...l,lane:l.lane??i,start:start-c.start,end:end-c.start});
+   }
+   layers.sort((a,b)=>a.lane-b.lane);scene={...scene,layers};
+  }
+ }
  return{scene,clip:c||null,titleText:scene.title||'',
   assetName:Array.isArray(scene.layers)?null:scene.asset,media,
   layerMedia:new Map((scene.layers||[]).map(l=>[l.id,mediaCache.get(l.asset+'::'+l.id)?.el])),
@@ -494,11 +505,7 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  focus:index=>{clipIndex=index;renderList();renderInspector();renderTimeline();},
  importAudio:()=>$('batchAudioInput').click(),
  move:(track,id,start)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)moveClip(c,start);},
- // 소재가 조각 밖으로 나가면 조각을 늘려 품게 한다. 늘어난 만큼 뒤 조각은 밀린다.
- growClip:(index,need)=>{const c=project.video[index];if(!c||!(need>c.duration))return;
-  // 조각이 늘어날 때 '끝까지' 쓰던 다른 소재가 같이 늘어나면 안 되니, 지금 보이는 끝에 붙들어 둔다.
-  for(const l of c.scene.layers||[])if(!l.end)l.end=c.duration;
-  trimRipple(project.video,c,'end',c.start+Math.min(600,need));},
+ setLayerSpan:(index,id,start,end)=>setLayerSpan(project.video[index],id,start,end),
  trim:(track,id,edge,at)=>{const list=track==='audio'?project.audio:project.video,c=list.find(x=>x.id===id);if(c)trimRipple(list,c,edge,at,track==='audio'?takeRoom(c):Infinity);},
  dropTake:(sentenceId,start)=>{const s=sentenceById(sentenceId);if(!s?.audio?.length)return toast('먼저 이 문장을 녹음하세요.');placeTake(s,start);changed();render();},
  removeTake:id=>{project.audio=project.audio.filter(c=>c.id!==id);changed();render();},

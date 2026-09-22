@@ -49,7 +49,7 @@ assert.equal($('edTracks').querySelectorAll('[data-take]').length,0,'녹음이 �
 assert.equal(window.document.getElementById('edTimelineScript'),null,'타임라인의 대사 가져오기 버튼은 없앴다');
 assert.equal(window.document.getElementById('edTimelineAudio'),null,'타임라인의 녹음 가져오기 버튼도 없앴다');
 assert.equal(window.document.querySelector('.timeline-tools #edNewScene'),null,'빈 조각·조각 내리기는 타임라인에서 빠졌다');
-assert.ok($('edAddMaterial')&&$('edRemoveMaterial'),'대신 소재 추가·소재 제거가 타임라인에 있다');
+assert.ok($('edAddMaterial'),'소재 추가 버튼이 있다');assert.equal($('edRemoveMaterial'),null,'제거는 각 라인의 X 버튼으로 한다');
 
 // 프로젝트 ZIP 왕복 — 트랙이 그대로 살아 돌아온다
 const before=read(),manifest={version:2,name:'복원 테스트',sentences:before.sentences.map(s=>({id:s.id,text:s.text,audio:null})),
