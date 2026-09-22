@@ -58,7 +58,7 @@ await settle();
 assert.match($('edClock').textContent,/^00:02\.00/,'빈 구간으로도 재생 머리가 움직인다');
 assert.notEqual(lastPreviewFill(),'#aa0000','빈 구간에서 앞 조각이 계속 보이면 안 된다');
 assert.notEqual(lastPreviewFill(),'#0000bb','빈 구간에서 뒤 조각이 미리 보여도 안 된다');
-assert.equal(lastPreviewFill(),'#171925','빈 구간은 빈 배경으로 그린다');
+assert.equal(lastPreviewFill(),'#ffffff','빈 구간은 흰 배경으로 그린다');
 
 // 빈 구간을 지나 다음 조각에 닿으면 다시 그 조각이 나온다
 $('edScrub').value='3.5';$('edScrub').dispatchEvent(new window.Event('input',{bubbles:true}));
