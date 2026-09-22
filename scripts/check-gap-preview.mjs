@@ -14,6 +14,8 @@ window.HTMLCanvasElement.prototype.getContext=function(){const self=this;
   {get:(o,k)=>k in o?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true;}});};
 window.confirm=()=>true;
 window.structuredClone=structuredClone;
+// happy-dom 의 ImageData 는 픽셀 배열을 받지 못해, GIF 프레임을 올릴 최소한의 그릇만 둔다.
+window.ImageData=class{constructor(data,width,height){this.data=data;this.width=width;this.height=height;}};
 const registered=new Map();window.document.modelContext={registerTool:async t=>registered.set(t.name,t)};
 const errors=[];window.addEventListener('error',e=>errors.push(e.message));
 window.fetch=async()=>new window.Response(JSON.stringify({user:null}),{status:200,headers:{'Content-Type':'application/json'}});
@@ -80,6 +82,43 @@ assert.ok(window.document.querySelector('#edAssets .gif-tag'),'움직이는 그�
 const decoded=decodeGif(clip3);
 assert.equal(decoded.frames.length,2);
 assert.equal(decoded.duration,2);
+
+
+// 소재는 빈 칸으로 먼저 생기고, 그 칸 위에 이미지를 끌어다 놓아야 들어간다
+{
+ const before=read().video[1].scene.layers?.length||0;
+ $('edAddMaterial').click();
+ assert.equal(read().video[1].scene.layers.length,before+1,'소재 추가는 빈 칸 하나를 만든다');
+ assert.equal(read().video[1].scene.layers.at(-1).asset,'','새 칸은 비어 있다');
+ const empty=[...$('edTracks').querySelectorAll('.layer-bar.is-empty')];
+ assert.equal(empty.length,1,'빈 칸은 타임라인에 따로 보인다');
+ assert.match(empty[0].textContent,/끌어다 놓기/,'무엇을 해야 하는지 막대가 알려 준다');
+
+ const drop=new window.Event('drop',{bubbles:true});
+ drop.dataTransfer={getData:t=>t==='text/asset'?'media/loop.gif':''};
+ empty[0].dispatchEvent(drop);
+ await new Promise(r=>setTimeout(r,300));
+ const filled=read().video[1].scene.layers.at(-1);
+ assert.equal(filled.asset,'media/loop.gif','끌어다 놓은 이미지가 그 칸에 들어간다');
+ assert.equal(filled.name,'loop.gif','빈 칸 이름은 넣은 파일 이름을 따라간다');
+ assert.equal($('edTracks').querySelectorAll('.layer-bar.is-empty').length,0,'채워진 칸은 더 이상 비어 보이지 않는다');
+
+ // 칸마다 이름을 고치고 앞뒤 순서를 바꾼다. 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다.
+ $('edAddMaterial').click();
+ const rails=[...$('edTracks').querySelectorAll('.rail-name')];
+ assert.equal(rails.length,2,'고른 조각의 칸마다 이름 칸이 하나씩');
+ assert.equal(rails[0].value,'소재 2','맨 위 칸이 가장 나중에 넣은 소재다');
+ rails[0].value='배경 그림';rails[0].dispatchEvent(new window.Event('change',{bubbles:true}));
+ assert.equal(read().video[1].scene.layers.at(-1).name,'배경 그림','칸 이름을 바로 고칠 수 있다');
+ $('edTracks').querySelector('[data-move="down"]').click();
+ assert.deepEqual([...read().video[1].scene.layers.map(l=>l.name)],['배경 그림','loop.gif'],'아래로 내린 칸은 먼저 그려져 뒤로 간다');
+ assert.equal([...$('edTracks').querySelectorAll('.rail-name')][0].value,'loop.gif','타임라인 순서도 따라 바뀐다');
+
+ // 소재 제거는 고른 칸만 내린다
+ // 고른 칸은 '배경 그림' — 내려도 고른 상태는 그대로다
+ $('edRemoveMaterial').click();
+ assert.deepEqual([...read().video[1].scene.layers.map(l=>l.name)],['loop.gif'],'고른 칸만 사라진다');
+}
 
 assert.deepEqual(errors,[]);
 
@@ -148,5 +187,5 @@ assert.deepEqual(errors,[]);
  assert.equal(read().captions,true,'다시 누르면 켜진다');
 }
 
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, and captions are one project-wide switch');
+console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, captions are one project-wide switch, and materials start as empty slots that only fill when an image is dragged onto them, with per-slot rename and front/back ordering');
 await window.happyDOM.abort();

@@ -2,7 +2,7 @@ import {timelineLayout,locateTime} from './project-timeline.js';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const clock=t=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
-const RAIL=130;
+const RAIL=168;
 export function createProjectTimeline(root,h){
  let zoom=64,layout,dragging=false;const peaks=new WeakMap();
  const scroll=root.parentElement;
@@ -34,14 +34,27 @@ export function createProjectTimeline(root,h){
   html+='<div class="track-row narration-track" data-drop="audio"><span class="timeline-rail">♫ 녹음</span>'+layout.takes.map(t=>{const take=h.takeOf(t.clip);
    return `<div class="take-bar ${take?'has-audio':'silent'}" role="button" tabindex="0" data-take="${esc(t.clip.id)}" title="${esc(t.clip.text||'녹음')} · ${clock(t.start)}–${clock(t.end)}" style="left:${x(t.start)}px;width:${Math.max(4,t.seconds*zoom)}px"><i data-edge="start" aria-hidden="true"></i><span>${esc(t.clip.text||'녹음')}</span>${wave(take)}<i data-edge="end" aria-hidden="true"></i></div>`;}).join('')
    +(layout.takes.length?'':'<p class="track-empty">녹음한 문장을 여기로 끌어다 놓으세요.</p>')+'</div>';
-  for(let lane=0;lane<layout.lanes;lane++)html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">▧ 소재 ${lane+1}</span>`+layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer;return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('')+'</div>';
+  // 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다. 레이어 배열의 끝이 곧 맨 위 칸이다.
+ for(let lane=layout.lanes-1;lane>=0;lane--){const own=layout.layers.find(c=>c.lane===lane&&c.clipIndex===h.selected());
+  const rail=own?`<input class="rail-name" data-rename="${esc(own.layer.id)}" data-rclip="${own.clipIndex}" value="${esc(own.layer.name||'소재')}" maxlength="120" aria-label="소재 이름"><button class="rail-move" data-move="up" data-rclip="${own.clipIndex}" data-mid="${esc(own.layer.id)}" title="앞으로 (위 칸)" aria-label="앞으로">↑</button><button class="rail-move" data-move="down" data-rclip="${own.clipIndex}" data-mid="${esc(own.layer.id)}" title="뒤로 (아래 칸)" aria-label="뒤로">↓</button>`:`▧ 소재 ${lane+1}`;
+  html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>`+layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer,empty=!l.asset&&l.kind!=='text';
+   return `<div class="layer-bar ${empty?'is-empty':''} ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset||'빈 소재 칸')} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':empty?'⤓ ':''}${esc(empty?'이미지를 여기로 끌어다 놓기':l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('')+'</div>';}
   if(!layout.layers.length&&!layout.takes.length)html+='<p class="timeline-empty">소재를 가져와 누르면 여기에 놓이고, 대사를 녹음하면 녹음 트랙이 생깁니다.</p>';
   root.innerHTML=html;
   root.querySelector('.track-ruler').onpointerdown=e=>{if(h.busy()||e.clientX-root.getBoundingClientRect().left<RAIL)return;h.stop();const ruler=e.currentTarget;ruler.setPointerCapture?.(e.pointerId);dragging=true;h.seek(timeAt(e));const move=ev=>h.seek(timeAt(ev));const done=()=>{dragging=false;ruler.removeEventListener('pointermove',move);ruler.removeEventListener('pointerup',done);ruler.removeEventListener('pointercancel',done);render();};ruler.addEventListener('pointermove',move);ruler.addEventListener('pointerup',done);ruler.addEventListener('pointercancel',done);};
   root.querySelectorAll('[data-take]').forEach(el=>{const entry=layout.takes.find(t=>t.clip.id===el.dataset.take);dragTake(el,entry);
    el.ondblclick=()=>{if(!h.busy()){h.stop();h.seek(entry.start);}};
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});
+  root.querySelectorAll('[data-rename]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
+   el.onchange=()=>h.renameLayer(+el.dataset.rclip,el.dataset.rename,el.value);});
+  root.querySelectorAll('[data-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
+   el.onclick=()=>h.reorderLayer(+el.dataset.rclip,el.dataset.mid,el.dataset.move);});
+  // 소재 칸 위에 그대로 떨어뜨리면 그 칸이 채워진다. 칸을 새로 만들지 않는다.
   root.querySelectorAll('[data-clip]').forEach(el=>{
+   el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
+   el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
+   el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');if(h.busy())return;
+    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();h.fillLayer(c.clipIndex,c.layer.id,key);});
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
    el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
     if(l.locked){dragging=false;return;}
@@ -59,12 +72,16 @@ export function createProjectTimeline(root,h){
     const done=()=>{dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
    };
   });
-  for(const el of root.querySelectorAll('[data-lane],[data-drop]')){el.ondragover=e=>e.preventDefault();
-   el.ondrop=e=>{e.preventDefault();if(h.busy())return;const at=timeAt(e);
+  for(const el of root.querySelectorAll('[data-lane],[data-drop]')){el.addEventListener('dragover',e=>e.preventDefault());
+   el.addEventListener('drop',e=>{e.preventDefault();if(h.busy())return;const at=timeAt(e);
     const take=e.dataTransfer.getData('text/take');
     if(el.dataset.drop==='audio'){if(take){h.stop();h.dropTake(Number(take),at);}return;}
     const key=e.dataTransfer.getData('text/asset'),hit=locateTime(layout,at);
-    if(key&&hit){h.stop();h.seek(hit.time);h.addAsset(key,hit.local);}};}
+    if(!key||!hit)return;
+    const lane=+el.dataset.lane,slot=layout.layers.find(c=>c.lane===lane&&c.clipIndex===hit.index&&!c.layer.asset&&c.layer.kind!=='text');
+    h.stop();
+    if(slot)h.fillLayer(slot.clipIndex,slot.layer.id,key);
+    else{h.seek(hit.time);h.addAsset(key,hit.local);}});}
   playhead(h.time());
  }
  return{render,playhead,fit(){const d=timelineLayout(h.video(),h.audio()).total;return Math.max(2,Math.min(160,((scroll.clientWidth||700)-150)/Math.max(1,d)));}};
