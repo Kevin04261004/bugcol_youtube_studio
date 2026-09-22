@@ -1,3 +1,4 @@
+import {materialTracks} from './editor-engine.js';
 // 트랙 위치는 모두 타임라인 절대 초. 레이어/키프레임 시간만 그 조각 기준 상대 시간이다.
 import {clipEnd,totalDuration,videoClipAt,clipsAt} from './core.js';
 const bar=(clip,index)=>({clip,index,start:clip.start,end:clipEnd(clip),seconds:Math.max(0,Number(clip.duration)||0)});
@@ -5,11 +6,11 @@ const bar=(clip,index)=>({clip,index,start:clip.start,end:clipEnd(clip),seconds:
 export function clipLayers(entry){const scene=entry.clip.scene||{},span=entry.seconds;
  const layers=Array.isArray(scene.layers)?scene.layers:(scene.asset?[{id:'legacy',asset:scene.asset,name:scene.asset.split('/').pop(),start:0,end:0,legacy:true}]:[]);
  return layers.map((layer,lane)=>{const start=entry.start+Math.min(span,Math.max(0,layer.start||0)),end=entry.start+Math.min(span,layer.end||span);
-  return{layer,lane,clipIndex:entry.index,start,end,clipStart:entry.start,clipEnd:entry.end};}).filter(c=>c.end>c.start);}
+  return{layer,lane:layer.lane??lane,clipIndex:entry.index,start,end,clipStart:entry.start,clipEnd:entry.end};}).filter(c=>c.end>c.start);}
 export function timelineLayout(video,audio){
  const clips=(video||[]).map(bar),takes=(audio||[]).map(bar);
  const layers=clips.flatMap(clipLayers);
- return{clips,takes,layers,lanes:Math.max(1,...layers.map(l=>l.lane+1)),total:totalDuration(video,audio)};
+ return{clips,takes,layers,lanes:Math.max(1,...clips.map(c=>materialTracks(c.clip.scene||{}).length),...layers.map(l=>l.lane+1)),total:totalDuration(video,audio)};
 }
 // 절대 시각 → 그 시점에 편집할 영상 조각과 조각 안에서의 시간. 빈 구간이면 null.
 export function locateTime(layout,seconds){const time=Math.min(layout.total,Math.max(0,Number(seconds)||0));

@@ -1,3 +1,4 @@
+import {materialTracks} from './editor-engine.js';
 import {timelineLayout,locateTime} from './project-timeline.js';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -41,7 +42,7 @@ export function createProjectTimeline(root,h){
   const hit=locateTime(layout,timeAt({clientX:x}));if(!hit)return false;
   if(lane){const slot=layout.layers.find(c=>c.lane===+lane.dataset.lane&&c.clipIndex===hit.index&&empty(c));
    if(slot){h.fillLayer(slot.clipIndex,slot.layer.id,key);return true;}}
-  h.seek(hit.time);h.addAsset(key,hit.local);return true;}
+  h.seek(hit.time);h.addAsset(key,hit.local,bar?null:lane?+lane.dataset.lane:null);return true;}
  function render(nextZoom=zoom){if(dragging)return;zoom=nextZoom;layout=timelineLayout(h.video(),h.audio());root.style.width=Math.max(scroll.clientWidth||500,RAIL+20+layout.total*zoom)+'px';
   const step=Math.max(zoom<40?5:zoom<80?2:1,Math.ceil(layout.total/1000));let ticks='';for(let t=0;t<=layout.total;t+=step)ticks+=`<span style="left:${x(t)}px">${clock(t)}</span>`;
   let html=`<div class="track-ruler" aria-label="전체 영상 시간 눈금"><b class="timeline-rail">전체 영상</b>${ticks}</div><div id="edPlayhead" style="left:${x(h.time())}px"></div>`;
@@ -49,20 +50,21 @@ export function createProjectTimeline(root,h){
    return `<div class="take-bar ${take?'has-audio':'silent'}" role="button" tabindex="0" data-take="${esc(t.clip.id)}" title="${esc(t.clip.text||'녹음')} · ${clock(t.start)}–${clock(t.end)}" style="left:${x(t.start)}px;width:${Math.max(4,t.seconds*zoom)}px"><i data-edge="start" aria-hidden="true"></i><span>${esc(t.clip.text||'녹음')}</span>${wave(take)}<i data-edge="end" aria-hidden="true"></i></div>`;}).join('')
    +(layout.takes.length?'':'<p class="track-empty">녹음한 문장을 여기로 끌어다 놓으세요.</p>')+'</div>';
   // 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다. 레이어 배열의 끝이 곧 맨 위 칸이다.
- for(let lane=layout.lanes-1;lane>=0;lane--){const own=layout.layers.find(c=>c.lane===lane&&c.clipIndex===h.selected());
-  const rail=own?`<input class="rail-name" data-rename="${esc(own.layer.id)}" data-rclip="${own.clipIndex}" value="${esc(own.layer.name||'소재')}" maxlength="120" aria-label="소재 이름"><button class="rail-move" data-move="up" data-rclip="${own.clipIndex}" data-mid="${esc(own.layer.id)}" title="앞으로 (위 칸)" aria-label="앞으로">↑</button><button class="rail-move" data-move="down" data-rclip="${own.clipIndex}" data-mid="${esc(own.layer.id)}" title="뒤로 (아래 칸)" aria-label="뒤로">↓</button>`:`▧ 소재 ${lane+1}`;
-  html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>`+layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer,empty=!l.asset&&l.kind!=='text';
-   return `<div class="layer-bar ${empty?'is-empty':''} ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset||'빈 소재 칸')} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':empty?'⤓ ':''}${esc(empty?'이미지를 여기로 끌어다 놓기':l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('')+'</div>';}
-  if(!layout.layers.length&&!layout.takes.length)html+='<p class="timeline-empty">소재를 가져와 누르면 여기에 놓이고, 대사를 녹음하면 녹음 트랙이 생깁니다.</p>';
+ const tracks=materialTracks(h.video()[h.selected()]?.scene||{});
+ for(let lane=layout.lanes-1;lane>=0;lane--){
+  const rail=`<input class="rail-name" data-track-name="${lane}" value="${esc(tracks[lane]?.name||'소재 '+(lane+1))}" maxlength="120" aria-label="소재 이름"><button class="rail-move" data-track-move="up" data-track="${lane}" title="앞으로 (위 칸)" aria-label="앞으로">↑</button><button class="rail-move" data-track-move="down" data-track="${lane}" title="뒤로 (아래 칸)" aria-label="뒤로">↓</button>`;
+  const blocks=layout.layers.map((c,i)=>{if(c.lane!==lane)return '';const l=c.layer;if(!l.asset&&l.kind!=='text')return '';
+   return `<div class="layer-bar ${l.hidden?'is-hidden':''} ${l.locked?'is-locked':''}" role="button" tabindex="0" aria-label="${esc(l.name||l.asset)} · 조각 ${c.clipIndex+1}" data-clip="${i}" style="left:${x(c.start)}px;width:${(c.end-c.start)*zoom}px"><i data-edge="start" aria-hidden="true"></i><span>${l.locked?'🔒 ':l.kind==='text'?'T ':l.kind==='video'?'▷ ':''}${esc(l.name||l.asset)}</span><i data-edge="end" aria-hidden="true"></i></div>`;}).join('');
+  html+=`<div class="track-row material-track" data-lane="${lane}"><span class="timeline-rail">${rail}</span>${blocks||'<p class="track-empty">소재나 블록을 여기로 끌어다 놓으세요.</p>'}</div>`;}
+  if(!layout.layers.length&&!layout.takes.length&&!tracks.length)html+='<p class="timeline-empty">소재를 가져와 누르면 여기에 놓이고, 대사를 녹음하면 녹음 트랙이 생깁니다.</p>';
   root.innerHTML=html;
   root.querySelector('.track-ruler').onpointerdown=e=>{if(h.busy()||e.clientX-root.getBoundingClientRect().left<RAIL)return;h.stop();const ruler=e.currentTarget;ruler.setPointerCapture?.(e.pointerId);dragging=true;h.seek(timeAt(e));const move=ev=>h.seek(timeAt(ev));const done=()=>{dragging=false;ruler.removeEventListener('pointermove',move);ruler.removeEventListener('pointerup',done);ruler.removeEventListener('pointercancel',done);render();};ruler.addEventListener('pointermove',move);ruler.addEventListener('pointerup',done);ruler.addEventListener('pointercancel',done);};
   root.querySelectorAll('[data-take]').forEach(el=>{const entry=layout.takes.find(t=>t.clip.id===el.dataset.take);dragTake(el,entry);
    el.ondblclick=()=>{if(!h.busy()){h.stop();h.seek(entry.start);}};
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});
-  root.querySelectorAll('[data-rename]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
-   el.onchange=()=>h.renameLayer(+el.dataset.rclip,el.dataset.rename,el.value);});
-  root.querySelectorAll('[data-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
-   el.onclick=()=>h.reorderLayer(+el.dataset.rclip,el.dataset.mid,el.dataset.move);});
+  root.querySelectorAll('[data-track-name]').forEach(el=>{el.onpointerdown=e=>{e.stopPropagation();h.selectLane(+el.dataset.trackName);};el.onchange=()=>h.renameTrack(+el.dataset.trackName,el.value);});
+  root.querySelectorAll('[data-track-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();el.onclick=()=>h.reorderTrack(+el.dataset.track,el.dataset.trackMove);});
+  root.querySelectorAll('[data-lane]').forEach(el=>{el.onpointerdown=e=>{if(e.target.closest('[data-clip],input,button'))return;h.selectLane(+el.dataset.lane);};});
   // 빈 소재 칸 위에 떨어뜨리면 그 칸이 채워진다.
   root.querySelectorAll('[data-clip]').forEach(el=>{
    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
@@ -74,16 +76,18 @@ export function createProjectTimeline(root,h){
     if(l.locked){dragging=false;return;}
     // 갓 넣은 영상은 아직 레이어가 아니라 끌 수 없다. 처음 끌 때 레이어로 바꿔 주고 그대로 이어서 끈다.
     if(l.legacy){const live=h.convertLayer(c.clipIndex);if(!live){dragging=false;return;}l=live;h.selectLayer(c.clipIndex,l.id,c.start);}
-    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}const origin=e.clientX,edge=e.target.dataset.edge,a=c.start-c.clipStart,b=c.end-c.clipStart,d=c.clipEnd-c.clipStart;
+    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}let targetLane=c.lane;const originTop=el.parentElement.getBoundingClientRect().top;const origin=e.clientX,edge=e.target.dataset.edge,a=c.start-c.clipStart,b=c.end-c.clipStart,d=c.clipEnd-c.clipStart;
     const move=ev=>{const delta=(ev.clientX-origin)/zoom,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
      if(edge==='start')l.start=clamp(snap(a+delta),0,b-frame);
      // 소재를 조각 밖으로 끌어도 멈추지 않는다. 대신 조각이 늘어나 소재를 계속 품는다.
      else if(edge==='end')l.end=Math.max(a+frame,snap(b+delta));
      else{const length=b-a;l.start=Math.max(0,snap(a+delta));l.end=l.start+length;}
+     if(!edge){const row=[...root.querySelectorAll('[data-lane]')].find(row=>{const r=row.getBoundingClientRect();return ev.clientY>=r.top&&ev.clientY<r.bottom;});
+      if(row){targetLane=+row.dataset.lane;el.style.transform='translateY('+(row.getBoundingClientRect().top-originTop)+'px)';el.style.zIndex='5';}}
      h.growClip(c.clipIndex,l.end);
      el.style.left=x(c.clipStart+l.start)+'px';el.style.width=((l.end||d)-l.start)*zoom+'px';
     };
-    const done=()=>{dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
+    const done=()=>{if(!edge)h.moveLayerToLane(c.clipIndex,l.id,targetLane);dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
    };
   });
   for(const el of root.querySelectorAll('[data-lane],[data-drop]')){el.addEventListener('dragover',e=>e.preventDefault());

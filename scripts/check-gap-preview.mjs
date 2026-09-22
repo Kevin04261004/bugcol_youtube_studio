@@ -84,56 +84,57 @@ assert.equal(decoded.frames.length,2);
 assert.equal(decoded.duration,2);
 
 
-// 소재는 빈 칸으로 먼저 생기고, 그 칸 위에 이미지를 끌어다 놓아야 들어간다
+// Empty rows have no placeholder blocks, persist after deletion, and accept block transfers.
 {
  const before=read().video[1].scene.layers?.length||0;
  $('edAddMaterial').click();
- assert.equal(read().video[1].scene.layers.length,before+1,'소재 추가는 빈 칸 하나를 만든다');
- assert.equal(read().video[1].scene.layers.at(-1).asset,'','새 칸은 비어 있다');
- const empty=[...$('edTracks').querySelectorAll('.layer-bar.is-empty')];
- assert.equal(empty.length,1,'빈 칸은 타임라인에 따로 보인다');
- assert.match(empty[0].textContent,/끌어다 놓기/,'무엇을 해야 하는지 막대가 알려 준다');
-
+ assert.equal(read().video[1].scene.layers.length,before);
+ assert.equal(read().video[1].scene.materialTracks.length,1);
+ assert.equal($('edTracks').querySelectorAll('.layer-bar').length,0);
+ const row=$('edTracks').querySelector('[data-lane="0"]');
  const drop=new window.Event('drop',{bubbles:true});
- drop.dataTransfer={getData:t=>t==='text/asset'?'media/loop.gif':''};
- empty[0].dispatchEvent(drop);
- await new Promise(r=>setTimeout(r,300));
- const filled=read().video[1].scene.layers.at(-1);
- assert.equal(filled.asset,'media/loop.gif','끌어다 놓은 이미지가 그 칸에 들어간다');
- assert.equal(filled.name,'loop.gif','빈 칸 이름은 넣은 파일 이름을 따라간다');
- assert.equal($('edTracks').querySelectorAll('.layer-bar.is-empty').length,0,'채워진 칸은 더 이상 비어 보이지 않는다');
-
- // 이미 찬 칸에 다른 이미지를 떨어뜨리면 갈아 끼우지 않고 소재 줄이 하나 더 생긴다
- {
-  const before=read().video[1].scene.layers.length,bar=$('edTracks').querySelector('.layer-bar');
-  const onto=new window.Event('drop',{bubbles:true});
-  onto.dataTransfer={getData:t=>t==='text/asset'?'media/loop.gif':''};
-  onto.clientX=400; // 3.6초 언저리 — 둘째 조각 위
-  bar.dispatchEvent(onto);
-  await new Promise(r=>setTimeout(r,300));
-  const after=read().video[1].scene.layers;
-  assert.equal(after.length,before+1,'찬 칸 위에 놓으면 줄이 하나 더 생긴다');
-  assert.equal(after[0].name,'loop.gif','원래 칸은 그대로 남는다');
-  assert.equal(after.at(-1).asset,'media/loop.gif','새 줄이 그 소재를 받는다');
-  $('edRemoveMaterial').click();
-  assert.equal(read().video[1].scene.layers.length,before,'새로 생긴 줄만 다시 내린다');
- }
-
- // 칸마다 이름을 고치고 앞뒤 순서를 바꾼다. 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다.
+ Object.assign(drop,{clientX:400,clientY:100,dataTransfer:{getData:t=>t==='text/asset'?'media/loop.gif':''}});
+ row.dispatchEvent(drop);await new Promise(r=>setTimeout(r,300));
+ assert.equal(read().video[1].scene.layers[0].asset,'media/loop.gif');
+ assert.equal(read().video[1].scene.layers[0].lane,0);
  $('edAddMaterial').click();
- const rails=[...$('edTracks').querySelectorAll('.rail-name')];
- assert.equal(rails.length,2,'고른 조각의 칸마다 이름 칸이 하나씩');
- assert.equal(rails[0].value,'소재 2','맨 위 칸이 가장 나중에 넣은 소재다');
- rails[0].value='배경 그림';rails[0].dispatchEvent(new window.Event('change',{bubbles:true}));
- assert.equal(read().video[1].scene.layers.at(-1).name,'배경 그림','칸 이름을 바로 고칠 수 있다');
- $('edTracks').querySelector('[data-move="down"]').click();
- assert.deepEqual([...read().video[1].scene.layers.map(l=>l.name)],['배경 그림','loop.gif'],'아래로 내린 칸은 먼저 그려져 뒤로 간다');
- assert.equal([...$('edTracks').querySelectorAll('.rail-name')][0].value,'loop.gif','타임라인 순서도 따라 바뀐다');
-
- // 소재 제거는 고른 칸만 내린다
- // 고른 칸은 '배경 그림' — 내려도 고른 상태는 그대로다
+ assert.equal(read().video[1].scene.materialTracks.length,2);
+ assert.equal(read().video[1].scene.layers.length,1);
+ let rail=$('edTracks').querySelector('[data-track-name="1"]');
+ rail.value='배경 그림';rail.dispatchEvent(new window.Event('change'));
+ assert.equal(read().video[1].scene.materialTracks[1].name,'배경 그림');
+ const dragTo=(bar,lane)=>{
+  $('edTracks').querySelectorAll('[data-lane]').forEach(row=>{const n=+row.dataset.lane;row.getBoundingClientRect=()=>({top:n*60,bottom:n*60+60});});
+  for(const [type,y]of [['pointerdown',10],['pointermove',lane*60+10],['pointerup',lane*60+10]]){
+   const e=new window.Event(type,{bubbles:true});Object.assign(e,{clientX:400,clientY:y,pointerId:1});bar.dispatchEvent(e);
+  }
+ };
+ const original=structuredClone(read().video[1].scene.layers[0]);
+ dragTo($('edTracks').querySelector('.layer-bar'),1);
+ let scene=read().video[1].scene;
+ assert.equal(scene.layers[0].lane,1);
+ assert.equal(scene.layers[0].id,original.id);
+ assert.equal(scene.layers[0].asset,original.asset);
+ assert.ok(Math.abs(scene.layers[0].start-original.start)<1/30);
+ assert.equal(scene.materialTracks.length,2,'source row survives transfer');
+ $('edUndo').click();assert.equal(read().video[1].scene.layers[0].lane,0);
+ $('edRedo').click();assert.equal(read().video[1].scene.layers[0].lane,1);
+ // Select after undo/redo and delete only the block.
+ let bar=$('edTracks').querySelector('.layer-bar');
+ const select=new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true});bar.dispatchEvent(select);
+ $('edDelete').click();
+ assert.equal(read().video[1].scene.layers.length,0);
+ assert.equal(read().video[1].scene.materialTracks.length,2);
+ assert.equal($('edTracks').querySelectorAll('[data-lane]').length,2);
+ // Project validation (used by ZIP reload) preserves empty rows and names.
+ const {validScene}=await import('../dist/core.js');
+ const restored=validScene({id:1,...JSON.parse(JSON.stringify(read().video[1].scene))});
+ assert.equal(restored.materialTracks[1].name,'배경 그림');
+ assert.equal(restored.layers.length,0);
+ $('edTracks').querySelector('[data-track="1"][data-track-move="down"]').click();
+ assert.equal(read().video[1].scene.materialTracks[0].name,'배경 그림');
  $('edRemoveMaterial').click();
- assert.deepEqual([...read().video[1].scene.layers.map(l=>l.name)],['loop.gif'],'고른 칸만 사라진다');
+ assert.equal(read().video[1].scene.materialTracks.length,1,'explicit row removal still works');
 }
 
 assert.deepEqual(errors,[]);
@@ -203,5 +204,6 @@ assert.deepEqual(errors,[]);
  assert.equal(read().captions,true,'다시 누르면 켜진다');
 }
 
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, captions are one project-wide switch, and materials start as empty slots that only fill when an image is dragged onto them, with per-slot rename and front/back ordering, while a drop on a filled slot adds another material lane instead of replacing it');
+console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth and captions');
+
 await window.happyDOM.abort();
