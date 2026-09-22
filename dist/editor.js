@@ -47,15 +47,16 @@ export function createFreeEditor(h){
   const target=layerIn(index,id);if(!target)return;
   if(target.locked)return h.toast('잠긴 소재입니다. 잠금을 풀고 넣어 주세요.');
   if(target.kind==='text')return h.toast('텍스트 칸에는 이미지를 넣을 수 없어요.');
+  // 이미 소재가 든 칸은 갈아 끼우지 않는다. 소재 줄을 하나 더 만들어 따로 관리하게 둔다.
+  if(target.asset){if(index!==h.selected()){h.focus(index);lastScene=h.current()?.id;}return addAsset(key,target.start||0);}
   if(index!==h.selected()){h.focus(index);lastScene=h.current()?.id;}
   active=id;fitMode=true;
   if(!checkpoint())return;
   const l=layerIn(index,id);if(!l)return;
-  try{const el=await h.load(key),empty=!l.asset,ratio=(el.videoWidth||el.naturalWidth)/(el.videoHeight||el.naturalHeight)||1;
-   if(empty&&/^소재 \d+$/.test(l.name||''))l.name=key.split('/').pop();
+  try{const el=await h.load(key),ratio=(el.videoWidth||el.naturalWidth)/(el.videoHeight||el.naturalHeight)||1;
+   if(/^소재 \d+$/.test(l.name||''))l.name=key.split('/').pop();
    l.asset=key;l.kind=el.videoWidth?'video':'image';l.clipStart=0;
-   // 빈 칸은 소재 비율대로 키우고, 이미 배치해 둔 칸은 크기를 건드리지 않는다.
-   if(empty){l.w=480;l.h=480/ratio;if(l.h>600){l.w*=600/l.h;l.h=600;}}
+   l.w=480;l.h=480/ratio;if(l.h>600){l.w*=600/l.h;l.h=600;}
    commit();}catch(e){h.toast(e.message);}}
  function renameLayer(index,id,name){const l=layerIn(index,id);if(!l||l.locked||!String(name).trim())return;
   if(l.name===String(name).slice(0,120))return;

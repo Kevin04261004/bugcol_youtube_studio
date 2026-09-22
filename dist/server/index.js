@@ -202,15 +202,16 @@ export function createFreeEditor(h){
   const target=layerIn(index,id);if(!target)return;
   if(target.locked)return h.toast('\uC7A0\uAE34 \uC18C\uC7AC\uC785\uB2C8\uB2E4. \uC7A0\uAE08\uC744 \uD480\uACE0 \uB123\uC5B4 \uC8FC\uC138\uC694.');
   if(target.kind==='text')return h.toast('\uD14D\uC2A4\uD2B8 \uCE78\uC5D0\uB294 \uC774\uBBF8\uC9C0\uB97C \uB123\uC744 \uC218 \uC5C6\uC5B4\uC694.');
+  // \uC774\uBBF8 \uC18C\uC7AC\uAC00 \uB4E0 \uCE78\uC740 \uAC08\uC544 \uB07C\uC6B0\uC9C0 \uC54A\uB294\uB2E4. \uC18C\uC7AC \uC904\uC744 \uD558\uB098 \uB354 \uB9CC\uB4E4\uC5B4 \uB530\uB85C \uAD00\uB9AC\uD558\uAC8C \uB454\uB2E4.
+  if(target.asset){if(index!==h.selected()){h.focus(index);lastScene=h.current()?.id;}return addAsset(key,target.start||0);}
   if(index!==h.selected()){h.focus(index);lastScene=h.current()?.id;}
   active=id;fitMode=true;
   if(!checkpoint())return;
   const l=layerIn(index,id);if(!l)return;
-  try{const el=await h.load(key),empty=!l.asset,ratio=(el.videoWidth||el.naturalWidth)/(el.videoHeight||el.naturalHeight)||1;
-   if(empty&&/^\uC18C\uC7AC \\d+$/.test(l.name||''))l.name=key.split('/').pop();
+  try{const el=await h.load(key),ratio=(el.videoWidth||el.naturalWidth)/(el.videoHeight||el.naturalHeight)||1;
+   if(/^\uC18C\uC7AC \\d+$/.test(l.name||''))l.name=key.split('/').pop();
    l.asset=key;l.kind=el.videoWidth?'video':'image';l.clipStart=0;
-   // \uBE48 \uCE78\uC740 \uC18C\uC7AC \uBE44\uC728\uB300\uB85C \uD0A4\uC6B0\uACE0, \uC774\uBBF8 \uBC30\uCE58\uD574 \uB454 \uCE78\uC740 \uD06C\uAE30\uB97C \uAC74\uB4DC\uB9AC\uC9C0 \uC54A\uB294\uB2E4.
-   if(empty){l.w=480;l.h=480/ratio;if(l.h>600){l.w*=600/l.h;l.h=600;}}
+   l.w=480;l.h=480/ratio;if(l.h>600){l.w*=600/l.h;l.h=600;}
    commit();}catch(e){h.toast(e.message);}}
  function renameLayer(index,id,name){const l=layerIn(index,id);if(!l||l.locked||!String(name).trim())return;
   if(l.name===String(name).slice(0,120))return;
@@ -328,12 +329,15 @@ export function createProjectTimeline(root,h){
    el.onchange=()=>h.renameLayer(+el.dataset.rclip,el.dataset.rename,el.value);});
   root.querySelectorAll('[data-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
    el.onclick=()=>h.reorderLayer(+el.dataset.rclip,el.dataset.mid,el.dataset.move);});
-  // \uC18C\uC7AC \uCE78 \uC704\uC5D0 \uADF8\uB300\uB85C \uB5A8\uC5B4\uB728\uB9AC\uBA74 \uADF8 \uCE78\uC774 \uCC44\uC6CC\uC9C4\uB2E4. \uCE78\uC744 \uC0C8\uB85C \uB9CC\uB4E4\uC9C0 \uC54A\uB294\uB2E4.
+  // \uBE48 \uC18C\uC7AC \uCE78 \uC704\uC5D0 \uB5A8\uC5B4\uB728\uB9AC\uBA74 \uADF8 \uCE78\uC774 \uCC44\uC6CC\uC9C4\uB2E4.
   root.querySelectorAll('[data-clip]').forEach(el=>{
    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
    el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
    el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');if(h.busy())return;
-    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();h.fillLayer(c.clipIndex,c.layer.id,key);});
+    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();
+    // \uBE48 \uCE78\uC774\uBA74 \uADF8 \uCE78\uC744 \uCC44\uC6B0\uACE0, \uC774\uBBF8 \uCC2C \uCE78\uC774\uBA74 \uBC14\uAFB8\uC9C0 \uC54A\uACE0 \uC18C\uC7AC \uC904\uC744 \uD558\uB098 \uB354 \uB9CC\uB4E0\uB2E4.
+    if(!c.layer.asset&&c.layer.kind!=='text')return h.fillLayer(c.clipIndex,c.layer.id,key);
+    const hit=locateTime(layout,timeAt(e));if(!hit)return;h.seek(hit.time);h.addAsset(key,hit.local);});
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
    el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
     if(l.locked){dragging=false;return;}
@@ -4946,7 +4950,7 @@ var LIVE_DEFAULT = "https://raw.githubusercontent.com/Kevin04261004/bugcol_youtu
 var LIVE_PATH = /^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json|svg|png|jpe?g|webp|woff2|ico|map)$/i;
 var LIVE_TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", map: "application/json; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", woff2: "font/woff2", ico: "image/x-icon" };
 var BUNDLED = typeof define_STATIC_FILES_default === "object" ? define_STATIC_FILES_default : {};
-var BUILD = true ? "006696de5c10" : "dev";
+var BUILD = true ? "8c2f1b8d887c" : "dev";
 var liveBase = (env) => {
   const base = env?.LIVE_SOURCE ?? LIVE_DEFAULT;
   return base && base !== "off" ? base.replace(/\/$/, "") : null;

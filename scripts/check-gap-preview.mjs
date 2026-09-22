@@ -103,6 +103,22 @@ assert.equal(decoded.duration,2);
  assert.equal(filled.name,'loop.gif','빈 칸 이름은 넣은 파일 이름을 따라간다');
  assert.equal($('edTracks').querySelectorAll('.layer-bar.is-empty').length,0,'채워진 칸은 더 이상 비어 보이지 않는다');
 
+ // 이미 찬 칸에 다른 이미지를 떨어뜨리면 갈아 끼우지 않고 소재 줄이 하나 더 생긴다
+ {
+  const before=read().video[1].scene.layers.length,bar=$('edTracks').querySelector('.layer-bar');
+  const onto=new window.Event('drop',{bubbles:true});
+  onto.dataTransfer={getData:t=>t==='text/asset'?'media/loop.gif':''};
+  onto.clientX=400; // 3.6초 언저리 — 둘째 조각 위
+  bar.dispatchEvent(onto);
+  await new Promise(r=>setTimeout(r,300));
+  const after=read().video[1].scene.layers;
+  assert.equal(after.length,before+1,'찬 칸 위에 놓으면 줄이 하나 더 생긴다');
+  assert.equal(after[0].name,'loop.gif','원래 칸은 그대로 남는다');
+  assert.equal(after.at(-1).asset,'media/loop.gif','새 줄이 그 소재를 받는다');
+  $('edRemoveMaterial').click();
+  assert.equal(read().video[1].scene.layers.length,before,'새로 생긴 줄만 다시 내린다');
+ }
+
  // 칸마다 이름을 고치고 앞뒤 순서를 바꾼다. 맨 위 칸이 가장 나중에 그려져 화면 앞에 선다.
  $('edAddMaterial').click();
  const rails=[...$('edTracks').querySelectorAll('.rail-name')];
@@ -187,5 +203,5 @@ assert.deepEqual(errors,[]);
  assert.equal(read().captions,true,'다시 누르면 켜진다');
 }
 
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, captions are one project-wide switch, and materials start as empty slots that only fill when an image is dragged onto them, with per-slot rename and front/back ordering');
+console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, a clip-filling layer still drags freely with the clip growing to hold it, captions are one project-wide switch, and materials start as empty slots that only fill when an image is dragged onto them, with per-slot rename and front/back ordering, while a drop on a filled slot adds another material lane instead of replacing it');
 await window.happyDOM.abort();

@@ -49,12 +49,15 @@ export function createProjectTimeline(root,h){
    el.onchange=()=>h.renameLayer(+el.dataset.rclip,el.dataset.rename,el.value);});
   root.querySelectorAll('[data-move]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
    el.onclick=()=>h.reorderLayer(+el.dataset.rclip,el.dataset.mid,el.dataset.move);});
-  // 소재 칸 위에 그대로 떨어뜨리면 그 칸이 채워진다. 칸을 새로 만들지 않는다.
+  // 빈 소재 칸 위에 떨어뜨리면 그 칸이 채워진다.
   root.querySelectorAll('[data-clip]').forEach(el=>{
    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
    el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
    el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');if(h.busy())return;
-    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();h.fillLayer(c.clipIndex,c.layer.id,key);});
+    const key=e.dataTransfer.getData('text/asset');if(!key)return;const c=layout.layers[+el.dataset.clip];h.stop();
+    // 빈 칸이면 그 칸을 채우고, 이미 찬 칸이면 바꾸지 않고 소재 줄을 하나 더 만든다.
+    if(!c.layer.asset&&c.layer.kind!=='text')return h.fillLayer(c.clipIndex,c.layer.id,key);
+    const hit=locateTime(layout,timeAt(e));if(!hit)return;h.seek(hit.time);h.addAsset(key,hit.local);});
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
    el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
     if(l.locked){dragging=false;return;}
