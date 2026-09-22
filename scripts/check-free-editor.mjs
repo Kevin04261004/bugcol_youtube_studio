@@ -89,6 +89,29 @@ assert.equal(read().video[1].scene.continues,undefined,'옮긴 뒤에는 이어�
 assert.equal(read().audio.length,0,'녹음이 없던 문장은 녹음 트랙을 차지하지 않는다');
 assert.equal(read().totalSeconds,6,'전체 길이는 예전 순차 재생 길이와 같다');
 
+// 레이어를 손으로 조각 전체에 딱 맞게 끌어 맞추는 건 모바일에서 거의 불가능해서,
+// 한 번에 화면 전체·조각 전체 길이로 채우는 버튼을 뒀다.
+$('edNewScene').click();
+$('edTracks').querySelectorAll('[data-shot]');
+$('edTracks').querySelector('[data-shot="'+(read().video.length-1)+'"]').click();
+$('edDuration').value='6';$('edDuration').dispatchEvent(new window.Event('change',{bubbles:true}));
+$('edAddText').click();
+$('prop_x').value='200';$('prop_x').dispatchEvent(new window.Event('change'));
+$('prop_y').value='120';$('prop_y').dispatchEvent(new window.Event('change'));
+$('prop_w').value='300';$('prop_w').dispatchEvent(new window.Event('change'));
+$('prop_h').value='80';$('prop_h').dispatchEvent(new window.Event('change'));
+$('prop_rotation').value='15';$('prop_rotation').dispatchEvent(new window.Event('change'));
+$('prop_start').value='1';$('prop_start').dispatchEvent(new window.Event('change'));
+$('prop_end').value='3';$('prop_end').dispatchEvent(new window.Event('change'));
+$('edAddKey').click();
+let layer=read().video.at(-1).scene.layers[0];
+assert.equal(layer.x,200);assert.equal(layer.start,1);assert.equal(layer.keyframes.length,1,'끌어 맞추면 키프레임이 남는다');
+$('edFill').click();
+layer=read().video.at(-1).scene.layers[0];
+assert.deepEqual([layer.x,layer.y,layer.w,layer.h,layer.rotation],[640,360,1280,720,0],'한 번에 화면 전체를 채운다');
+assert.equal(layer.start,0);assert.equal(layer.end,0,'0=조각 끝 — 조각 길이가 바뀌어도 항상 끝까지 채운다');
+assert.equal(layer.keyframes.length,0,'애매하게 남은 키프레임도 함께 정리된다');
+
 assert.deepEqual(errors,[]);
-console.log('PASS clip-scoped layer edits, two keyframes, duplicate, undo/redo, absolute track placement, v2 project ZIP round trip, per-clip duration and version:1 project migration on open');
+console.log('PASS clip-scoped layer edits, two keyframes, duplicate, undo/redo, absolute track placement, v2 project ZIP round trip, per-clip duration, version:1 project migration on open, and one-tap fill-clip for a layer');
 await window.happyDOM.abort();
