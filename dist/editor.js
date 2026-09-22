@@ -34,25 +34,47 @@ export function createFreeEditor(h){
  function updateClock(){const f=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${(t%60).toFixed(2).padStart(5,'0')}`,total=layout().total;$('edClock').textContent=`${f(projectTime())} / ${f(total)}`;$('edScrub').max=total;$('edScrub').step=1/getFrameRate();$('edScrub').value=projectTime();$('edFit').classList.toggle('selected',fitMode);timeline?.playhead(projectTime(),playing);}
  function assetUrl(key){const blob=h.assets()[key],old=urls.get(key);if(old?.blob===blob)return old.url;if(old)URL.revokeObjectURL(old.url);const url=URL.createObjectURL(blob);urls.set(key,{blob,url});return url;}
  let touchDropAt=0;
+ // 손가락이 화면 가장자리에 닿아 있는 동안 화면을 대신 밀어 준다. 소재함과 타임라인이 한 화면에 안 들어와도 끌어다 놓을 수 있다.
+ const EDGE=96,MAX_SCROLL=22;
+ const scrollableY=node=>{for(let el=node;el&&el!==document.body;el=el.parentElement){const o=getComputedStyle(el).overflowY;
+   if((o==='auto'||o==='scroll')&&el.scrollHeight>el.clientHeight+2)return el;}
+  return document.scrollingElement||document.documentElement;};
+ const edgePush=(near,far,size)=>{const inTop=near<EDGE,inBottom=far<EDGE;
+  if(!inTop&&!inBottom||size<=0)return 0;
+  const depth=Math.min(1,(EDGE-(inTop?near:far))/EDGE);return Math.ceil(MAX_SCROLL*depth)*(inTop?-1:1);};
+ function autoScroll(x,y){const under=document.elementFromPoint?.(x,y);
+  const box=under?.closest?.('.track-scroll');
+  if(box){const r=box.getBoundingClientRect(),dx=edgePush(x-r.left,r.right-x,box.scrollWidth-box.clientWidth);
+   if(dx)box.scrollLeft+=dx;}
+  const pane=scrollableY(under||document.body),r=pane===document.scrollingElement||pane===document.documentElement
+   ?{top:0,bottom:innerHeight}:pane.getBoundingClientRect();
+  const dy=edgePush(y-r.top,r.bottom-y,pane.scrollHeight-pane.clientHeight);
+  if(dy)pane.scrollTop+=dy;
+  return!!dy;}
  // 모바일 브라우저는 dragstart 를 내지 않는다. 길게 눌러 끄는 길을 따로 낸다.
  function touchDrag(el,key){let state=null;
   const block=e=>{if(state?.armed&&e.cancelable)e.preventDefault();};
-  const clean=()=>{if(!state)return;clearTimeout(state.timer);state.ghost?.remove();state=null;
+  const clean=()=>{if(!state)return;clearTimeout(state.timer);cancelAnimationFrame(state.roll);state.ghost?.remove();state=null;
    timeline.hover(null);document.removeEventListener('pointermove',onMove);document.removeEventListener('pointerup',onUp);
    document.removeEventListener('pointercancel',clean);document.removeEventListener('touchmove',block);};
   const onMove=e=>{if(!state)return;
    // 손가락이 먼저 움직이면 목록을 넘기려는 것이니 끌기를 접는다.
    if(!state.armed){if(Math.hypot(e.clientX-state.x,e.clientY-state.y)>10)clean();return;}
-   state.ghost.style.left=e.clientX+'px';state.ghost.style.top=e.clientY+'px';timeline.hover(e.clientX,e.clientY);};
+   state.x=e.clientX;state.y=e.clientY;
+   state.ghost.style.left=state.x+'px';state.ghost.style.top=state.y+'px';timeline.hover(state.x,state.y);};
+  // 손가락이 멈춰 있어도 가장자리에 있으면 계속 밀어야 하므로 프레임마다 확인한다.
+  const roll=()=>{if(!state?.armed)return;
+   if(autoScroll(state.x,state.y))timeline.hover(state.x,state.y);
+   state.roll=requestAnimationFrame(roll);};
   const onUp=e=>{const armed=state?.armed,x=e.clientX,y=e.clientY;clean();if(!armed)return;
    touchDropAt=Date.now();
    if(!timeline.dropAsset(key,x,y))h.toast('타임라인의 소재 칸 위에 놓아 주세요.');};
   el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'||h.isBusy())return;clean();
-   state={x:e.clientX,y:e.clientY,armed:false,ghost:null,timer:0};
+   state={x:e.clientX,y:e.clientY,armed:false,ghost:null,timer:0,roll:0};
    state.timer=setTimeout(()=>{if(!state)return;state.armed=true;navigator.vibrate?.(12);
     const ghost=document.createElement('div');ghost.className='drag-ghost';ghost.textContent=key.split('/').pop();
     ghost.style.left=state.x+'px';ghost.style.top=state.y+'px';document.body.append(ghost);state.ghost=ghost;
-    timeline.hover(state.x,state.y);},260);
+    timeline.hover(state.x,state.y);roll();},260);
    document.addEventListener('pointermove',onMove);document.addEventListener('pointerup',onUp);
    document.addEventListener('pointercancel',clean);document.addEventListener('touchmove',block,{passive:false});});
  }

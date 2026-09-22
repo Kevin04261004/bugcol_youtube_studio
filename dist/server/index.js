@@ -189,25 +189,47 @@ export function createFreeEditor(h){
  function updateClock(){const f=t=>\`\${String(Math.floor(t/60)).padStart(2,'0')}:\${(t%60).toFixed(2).padStart(5,'0')}\`,total=layout().total;$('edClock').textContent=\`\${f(projectTime())} / \${f(total)}\`;$('edScrub').max=total;$('edScrub').step=1/getFrameRate();$('edScrub').value=projectTime();$('edFit').classList.toggle('selected',fitMode);timeline?.playhead(projectTime(),playing);}
  function assetUrl(key){const blob=h.assets()[key],old=urls.get(key);if(old?.blob===blob)return old.url;if(old)URL.revokeObjectURL(old.url);const url=URL.createObjectURL(blob);urls.set(key,{blob,url});return url;}
  let touchDropAt=0;
+ // \uC190\uAC00\uB77D\uC774 \uD654\uBA74 \uAC00\uC7A5\uC790\uB9AC\uC5D0 \uB2FF\uC544 \uC788\uB294 \uB3D9\uC548 \uD654\uBA74\uC744 \uB300\uC2E0 \uBC00\uC5B4 \uC900\uB2E4. \uC18C\uC7AC\uD568\uACFC \uD0C0\uC784\uB77C\uC778\uC774 \uD55C \uD654\uBA74\uC5D0 \uC548 \uB4E4\uC5B4\uC640\uB3C4 \uB04C\uC5B4\uB2E4 \uB193\uC744 \uC218 \uC788\uB2E4.
+ const EDGE=96,MAX_SCROLL=22;
+ const scrollableY=node=>{for(let el=node;el&&el!==document.body;el=el.parentElement){const o=getComputedStyle(el).overflowY;
+   if((o==='auto'||o==='scroll')&&el.scrollHeight>el.clientHeight+2)return el;}
+  return document.scrollingElement||document.documentElement;};
+ const edgePush=(near,far,size)=>{const inTop=near<EDGE,inBottom=far<EDGE;
+  if(!inTop&&!inBottom||size<=0)return 0;
+  const depth=Math.min(1,(EDGE-(inTop?near:far))/EDGE);return Math.ceil(MAX_SCROLL*depth)*(inTop?-1:1);};
+ function autoScroll(x,y){const under=document.elementFromPoint?.(x,y);
+  const box=under?.closest?.('.track-scroll');
+  if(box){const r=box.getBoundingClientRect(),dx=edgePush(x-r.left,r.right-x,box.scrollWidth-box.clientWidth);
+   if(dx)box.scrollLeft+=dx;}
+  const pane=scrollableY(under||document.body),r=pane===document.scrollingElement||pane===document.documentElement
+   ?{top:0,bottom:innerHeight}:pane.getBoundingClientRect();
+  const dy=edgePush(y-r.top,r.bottom-y,pane.scrollHeight-pane.clientHeight);
+  if(dy)pane.scrollTop+=dy;
+  return!!dy;}
  // \uBAA8\uBC14\uC77C \uBE0C\uB77C\uC6B0\uC800\uB294 dragstart \uB97C \uB0B4\uC9C0 \uC54A\uB294\uB2E4. \uAE38\uAC8C \uB20C\uB7EC \uB044\uB294 \uAE38\uC744 \uB530\uB85C \uB0B8\uB2E4.
  function touchDrag(el,key){let state=null;
   const block=e=>{if(state?.armed&&e.cancelable)e.preventDefault();};
-  const clean=()=>{if(!state)return;clearTimeout(state.timer);state.ghost?.remove();state=null;
+  const clean=()=>{if(!state)return;clearTimeout(state.timer);cancelAnimationFrame(state.roll);state.ghost?.remove();state=null;
    timeline.hover(null);document.removeEventListener('pointermove',onMove);document.removeEventListener('pointerup',onUp);
    document.removeEventListener('pointercancel',clean);document.removeEventListener('touchmove',block);};
   const onMove=e=>{if(!state)return;
    // \uC190\uAC00\uB77D\uC774 \uBA3C\uC800 \uC6C0\uC9C1\uC774\uBA74 \uBAA9\uB85D\uC744 \uB118\uAE30\uB824\uB294 \uAC83\uC774\uB2C8 \uB04C\uAE30\uB97C \uC811\uB294\uB2E4.
    if(!state.armed){if(Math.hypot(e.clientX-state.x,e.clientY-state.y)>10)clean();return;}
-   state.ghost.style.left=e.clientX+'px';state.ghost.style.top=e.clientY+'px';timeline.hover(e.clientX,e.clientY);};
+   state.x=e.clientX;state.y=e.clientY;
+   state.ghost.style.left=state.x+'px';state.ghost.style.top=state.y+'px';timeline.hover(state.x,state.y);};
+  // \uC190\uAC00\uB77D\uC774 \uBA48\uCDB0 \uC788\uC5B4\uB3C4 \uAC00\uC7A5\uC790\uB9AC\uC5D0 \uC788\uC73C\uBA74 \uACC4\uC18D \uBC00\uC5B4\uC57C \uD558\uBBC0\uB85C \uD504\uB808\uC784\uB9C8\uB2E4 \uD655\uC778\uD55C\uB2E4.
+  const roll=()=>{if(!state?.armed)return;
+   if(autoScroll(state.x,state.y))timeline.hover(state.x,state.y);
+   state.roll=requestAnimationFrame(roll);};
   const onUp=e=>{const armed=state?.armed,x=e.clientX,y=e.clientY;clean();if(!armed)return;
    touchDropAt=Date.now();
    if(!timeline.dropAsset(key,x,y))h.toast('\uD0C0\uC784\uB77C\uC778\uC758 \uC18C\uC7AC \uCE78 \uC704\uC5D0 \uB193\uC544 \uC8FC\uC138\uC694.');};
   el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'||h.isBusy())return;clean();
-   state={x:e.clientX,y:e.clientY,armed:false,ghost:null,timer:0};
+   state={x:e.clientX,y:e.clientY,armed:false,ghost:null,timer:0,roll:0};
    state.timer=setTimeout(()=>{if(!state)return;state.armed=true;navigator.vibrate?.(12);
     const ghost=document.createElement('div');ghost.className='drag-ghost';ghost.textContent=key.split('/').pop();
     ghost.style.left=state.x+'px';ghost.style.top=state.y+'px';document.body.append(ghost);state.ghost=ghost;
-    timeline.hover(state.x,state.y);},260);
+    timeline.hover(state.x,state.y);roll();},260);
    document.addEventListener('pointermove',onMove);document.addEventListener('pointerup',onUp);
    document.addEventListener('pointercancel',clean);document.addEventListener('touchmove',block,{passive:false});});
  }
@@ -4983,7 +5005,7 @@ var LIVE_DEFAULT = "https://raw.githubusercontent.com/Kevin04261004/bugcol_youtu
 var LIVE_PATH = /^\/(?!server\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(html|css|js|json|svg|png|jpe?g|webp|woff2|ico|map)$/i;
 var LIVE_TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", map: "application/json; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", woff2: "font/woff2", ico: "image/x-icon" };
 var BUNDLED = typeof define_STATIC_FILES_default === "object" ? define_STATIC_FILES_default : {};
-var BUILD = true ? "cdaf0854f5f1" : "dev";
+var BUILD = true ? "f9bb169f9644" : "dev";
 var liveBase = (env) => {
   const base = env?.LIVE_SOURCE ?? LIVE_DEFAULT;
   return base && base !== "off" ? base.replace(/\/$/, "") : null;
