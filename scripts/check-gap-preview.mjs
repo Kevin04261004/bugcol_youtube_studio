@@ -80,5 +80,37 @@ assert.equal(decoded.frames.length,2);
 assert.equal(decoded.duration,2);
 
 assert.deepEqual(errors,[]);
-console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, and animated GIFs import as material');
+
+// 소재 막대를 끌어 자유롭게 옮길 수 있어야 한다.
+// 조각을 꽉 채운 소재는 조각 안에 여유가 0이라 예전에는 1px도 움직이지 않았다.
+{
+ const drag=(el,from,to)=>{
+  const down=new window.Event('pointerdown',{bubbles:true});
+  Object.assign(down,{clientX:from,pointerId:1});
+  el.dispatchEvent(down);
+  const move=new window.Event('pointermove',{bubbles:true});
+  Object.assign(move,{clientX:to,pointerId:1});
+  el.dispatchEvent(move);
+  const up=new window.Event('pointerup',{bubbles:true});
+  Object.assign(up,{clientX:to,pointerId:1});
+  el.dispatchEvent(up);
+ };
+ $('edNewScene').click();
+ const slot=read().video.length-1;
+ $('edTracks').querySelector('[data-shot="'+slot+'"]').click();
+ $('edAddText').click();
+ $('edFill').click();
+ const filled=read().video[slot];
+ assert.equal(filled.scene.layers[0].start,0);
+ assert.equal(filled.scene.layers[0].end,0,'조각 전체를 채운 상태 — 안에 여유가 없다');
+ const bar=[...$('edTracks').querySelectorAll('.layer-bar')].at(-1);
+ assert.ok(bar,'소재 막대가 그려진다');
+ drag(bar,0,128); // 2초(zoom 64) 오른쪽으로
+ const moved=read().video[slot];
+ assert.equal(moved.scene.layers[0].start,2,'소재가 실제로 옮겨진다');
+ assert.equal(moved.scene.layers[0].end,5,'길이는 그대로 유지된다');
+ assert.equal(moved.duration,5,'조각이 늘어나 옮긴 소재를 계속 품는다');
+}
+
+console.log('PASS preview paints the selected clip at its own timeline position, and gaps between clips render empty instead of holding the previous clip, animated GIFs import as material, and a clip-filling layer still drags freely with the clip growing to hold it');
 await window.happyDOM.abort();

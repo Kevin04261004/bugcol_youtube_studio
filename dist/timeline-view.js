@@ -52,12 +52,20 @@ export function createProjectTimeline(root,h){
    el.onkeydown=e=>{if(e.key==='Delete'){e.preventDefault();h.removeTake(entry.clip.id);}};});
   root.querySelectorAll('[data-clip]').forEach(el=>{
    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!h.busy()){const c=layout.layers[+el.dataset.clip];h.stop();h.selectLayer(c.clipIndex,c.layer.id,c.start);}}};
-   el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip],l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();if(l.locked||l.legacy){dragging=false;return;}e.preventDefault();h.stamp();el.setPointerCapture?.(e.pointerId);const origin=e.clientX,edge=e.target.dataset.edge,a=c.start-c.clipStart,b=c.end-c.clipStart,d=c.clipEnd-c.clipStart;
+   el.onpointerdown=e=>{if(h.busy())return;const c=layout.layers[+el.dataset.clip];let l=c.layer;h.stop();dragging=true;h.selectLayer(c.clipIndex,l.id,c.start);selected();
+    if(l.locked){dragging=false;return;}
+    // 갓 넣은 영상은 아직 레이어가 아니라 끌 수 없다. 처음 끌 때 레이어로 바꿔 주고 그대로 이어서 끈다.
+    if(l.legacy){const live=h.convertLayer(c.clipIndex);if(!live){dragging=false;return;}l=live;h.selectLayer(c.clipIndex,l.id,c.start);}
+    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}const origin=e.clientX,edge=e.target.dataset.edge,a=c.start-c.clipStart,b=c.end-c.clipStart,d=c.clipEnd-c.clipStart;
     const move=ev=>{const delta=(ev.clientX-origin)/zoom,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
      if(edge==='start')l.start=clamp(snap(a+delta),0,b-frame);
-     else if(edge==='end')l.end=clamp(snap(b+delta),a+frame,d);
-     else{const length=b-a;l.start=clamp(snap(a+delta),0,Math.max(0,d-length));l.end=l.start+length;}
+     // 소재를 조각 밖으로 끌어도 멈추지 않는다. 대신 조각이 늘어나 소재를 계속 품는다.
+     else if(edge==='end')l.end=Math.max(a+frame,snap(b+delta));
+     else{const length=b-a;l.start=Math.max(0,snap(a+delta));l.end=l.start+length;}
+     h.growClip(c.clipIndex,l.end);
      el.style.left=x(c.clipStart+l.start)+'px';el.style.width=((l.end||d)-l.start)*zoom+'px';
+     const owner=root.querySelector('[data-shot="'+c.clipIndex+'"]');
+     if(owner)owner.style.width=Math.max(4,(h.video()[c.clipIndex]?.duration||d)*zoom)+'px';
     };
     const done=()=>{dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
    };
