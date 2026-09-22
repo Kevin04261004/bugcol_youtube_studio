@@ -5,7 +5,7 @@ import {createGifWriter,decodeGif,gifFrameAt} from './gif.js';
 import{createCloudEditor}from'./cloud.js';
 import{zip,unzipSync,strToU8,strFromU8}from'./vendor/fflate.js';
 import{Muxer,ArrayBufferTarget,FileSystemWritableFileStreamTarget}from'./vendor/mp4-muxer.js';
-import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec,unusedAssetKeys,newVideoClip,newAudioClip,migrateProject,totalDuration,trackEnd,trackTail,clipEnd,clipsAt,videoClipAt,locateClip,moveClip,trimClip,mixNarration,MIN_CLIP}from'./core.js';
+import{RATE,splitSentences,joinAudio,editAudio,trimAudio,wavBytes,pad,validScene,audioPackets,planAudioImports,COVER,sceneEntrance,needsScrim,clipRange,clipTimeAt,clipOutputSize,safeClipName,uniqueAssetKey,pickClipCodec,unusedAssetKeys,newVideoClip,newAudioClip,migrateProject,totalDuration,trackEnd,trackTail,clipEnd,clipsAt,videoClipAt,locateClip,moveClip,trimClip,trimRipple,mixNarration,MIN_CLIP}from'./core.js';
 const size=n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB';
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const emptyProject=()=>({version:2,name:'새로운 롱폼',sentences:[],video:[],audio:[],assets:{}});
@@ -482,7 +482,7 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  focus:index=>{clipIndex=index;renderList();renderInspector();renderTimeline();},
  importAudio:()=>$('batchAudioInput').click(),
  move:(track,id,start)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)moveClip(c,start);},
- trim:(track,id,edge,at)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)trimClip(c,edge,at,track==='audio'?takeRoom(c):Infinity);},
+ trim:(track,id,edge,at)=>{const list=track==='audio'?project.audio:project.video,c=list.find(x=>x.id===id);if(c)trimRipple(list,c,edge,at,track==='audio'?takeRoom(c):Infinity);},
  dropTake:(sentenceId,start)=>{const s=sentenceById(sentenceId);if(!s?.audio?.length)return toast('먼저 이 문장을 녹음하세요.');placeTake(s,start);changed();render();},
  removeTake:id=>{project.audio=project.audio.filter(c=>c.id!==id);changed();render();},
  async startTimelineAudio(from){await audioContext();const b=narrationBuffer(from,total());

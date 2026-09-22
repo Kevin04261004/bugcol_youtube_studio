@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {newVideoClip,newAudioClip,trackEnd,totalDuration,clipsAt,videoClipAt,locateClip,moveClip,trimClip,migrateProject,mixNarration,MIN_CLIP,RATE} from '../dist/core.js';
+import {newVideoClip,newAudioClip,trackEnd,totalDuration,clipsAt,videoClipAt,locateClip,moveClip,trimClip,trimRipple,clipEnd,migrateProject,mixNarration,MIN_CLIP,RATE} from '../dist/core.js';
 
 // 빈 트랙은 길이 0
 assert.equal(trackEnd([]),0);
@@ -124,4 +124,64 @@ assert.equal(oddStart[0],whole[Math.round(.3*RATE)],'중간에서 시작해도 �
 assert.equal(mixNarration([],takeFor,0,10).length,10,'녹음이 없으면 무음');
 assert.equal(mixNarration(null,takeFor,0,0).length,0);
 
-console.log('PASS independent video/audio track clips, gap/overlap lookup, clip move and edge trim with narration offset, longer-track total duration, and version:1 scene-per-sentence to version:2 track migration, and narration mixing with overlap, trim and chunked reads');
+
+// ── 가장자리를 끌어 이웃을 밀어내기(ripple) ──────────────────────────
+// 실제 문제 재현: 진짜 영상(0~2.52초) 뒤에 빈 조각 여러 개가 줄지어 있다.
+// 영상 오른쪽 끝을 늘리면, 겹치게 된 빈 조각이 밀려서 실제로 화면에 반영돼야 한다.
+{
+ const real=newVideoClip({asset:'a.mp4'},0,2.52,'real');
+ const blank1=newVideoClip({},2.52,3.38,'b1');
+ const blank2=newVideoClip({},5.9,4.1,'b2');
+ const track=[real,blank1,blank2];
+ trimRipple(track,real,'end',4);
+ assert.equal(real.duration,4,'끌던 조각은 그대로 늘어난다');
+ assert.equal(blank1.start,4,'겹친 만큼 바로 다음 빈 조각이 밀린다');
+ assert.ok(Math.abs(blank1.duration-1.9)<1e-9,'밀린 만큼 그 조각 길이는 줄어든다(끝은 그대로 5.9초)');
+ assert.equal(clipEnd(blank1),5.9,'뒤에 있는 조각 자리는 그대로');
+ assert.equal(blank2.start,5.9,'더 뒤에 있는 조각은 안 건드린다');
+}
+// 한 조각을 완전히 삼킬 만큼 늘리면, 그 조각은 사라지듯 최소 길이로 줄고 다음 조각이 이어서 밀린다
+{
+ const real=newVideoClip({asset:'a.mp4'},0,2,'real');
+ const b1=newVideoClip({},2,2,'b1'); // 2~4
+ const b2=newVideoClip({},4,2,'b2'); // 4~6
+ const track=[real,b1,b2];
+ trimRipple(track,real,'end',3.5); // 조각1을 3.5초까지만 늘림 — b1 만 걸친다
+ assert.equal(real.duration,3.5);
+ assert.equal(b1.start,3.5);assert.equal(clipEnd(b1),4,'b1 은 줄어들 뿐 사라지진 않는다');
+ assert.equal(b2.start,4,'아직 안 닿은 b2 는 그대로');
+}
+// 이웃이 없으면 평소처럼 그냥 늘어난다
+{
+ const solo=newVideoClip({},0,2,'solo');
+ trimRipple([solo],solo,'end',5);
+ assert.equal(solo.duration,5);
+}
+// 시작 쪽을 당겨도 대칭으로 동작 — 앞 조각이 밀린다(줄어든다)
+{
+ const prev=newVideoClip({},0,3,'prev');
+ const cur=newVideoClip({asset:'a.mp4'},3,2,'cur');
+ const track=[prev,cur];
+ trimRipple(track,cur,'start',1);
+ assert.equal(cur.start,1);assert.equal(clipEnd(cur),5,'끝은 그대로, 시작만 당겨진다');
+ assert.equal(clipEnd(prev),1,'앞 조각은 끝이 줄어든다');
+ assert.equal(prev.start,0,'앞 조각의 시작은 그대로');
+}
+// 녹음 조각을 밀어도 offset 계산은 trimClip 과 똑같이 맞는다
+{
+ const take=newAudioClip(1,0,3,'문장','a1');
+ const real=newAudioClip(2,3,2,'다음 문장','a2',1); // 이미 1초를 건너뛴 녹음
+ trimRipple([take,real],take,'end',4); // 1초 겹치게 늘림
+ assert.equal(take.duration,4);
+ assert.equal(real.start,4);
+ assert.equal(real.offset,2,'밀린 만큼 녹음도 더 뒤에서부터 쓴다(1+1=2초)');
+ assert.equal(clipEnd(real),5,'녹음 조각의 끝은 그대로');
+}
+// 겹치지 않으면(이미 떨어져 있으면) 건드리지 않는다
+{
+ const a=newVideoClip({},0,2,'a'),b=newVideoClip({},5,2,'b');
+ trimRipple([a,b],a,'end',3); // 여전히 b 와 안 겹친다
+ assert.equal(a.duration,3);assert.equal(b.start,5,'안 겹치면 이웃은 그대로');
+}
+
+console.log('PASS independent video/audio track clips, gap/overlap lookup, clip move and edge trim with narration offset, longer-track total duration, and version:1 scene-per-sentence to version:2 track migration, and narration mixing with overlap, trim and chunked reads, and ripple trim that pushes an overlapped neighbour clip out of the way');

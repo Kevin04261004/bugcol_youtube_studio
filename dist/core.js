@@ -96,6 +96,22 @@ export function trimClip(clip,edge,time,limit=Infinity){
  }else clip.duration=Math.min(max,Math.max(MIN_CLIP,t-clip.start));
  return clip;
 }
+// 가장자리를 끌어 이웃 조각과 겹치게 되면, 겹친 만큼 그 이웃을 밀어서(줄여서) 자리를 낸다.
+// 겹침 규칙상 나중에 시작한 조각이 화면 앞이라, 안 밀어 주면 앞 조각을 늘려도 뒤 빈 조각에 가려 화면엔 아무 변화가 없다.
+export function trimRipple(clips,clip,edge,time,limit=Infinity){
+ trimClip(clip,edge,time,limit);
+ const list=(clips||[]).filter(c=>c!==clip);
+ if(edge==='end'){
+  const end=clipEnd(clip);
+  const next=list.filter(c=>c.start>=clip.start-1e-6&&c.start<end).sort((a,b)=>a.start-b.start)[0];
+  if(next)trimClip(next,'start',end);
+ }else{
+  const start=clip.start;
+  const prev=list.filter(c=>c.start<=clip.start+1e-6&&clipEnd(c)>start).sort((a,b)=>clipEnd(b)-clipEnd(a))[0];
+  if(prev)trimClip(prev,'end',start);
+ }
+ return clip;
+}
 // 녹음 트랙을 PCM 한 덩어리로 섞는다. from 초부터 length 샘플만큼.
 // takeFor 는 조각이 쓰는 녹음을 돌려준다. 조각이 겹치면 더해지고, 아무도 없는 구간은 무음이다.
 export function mixNarration(clips,takeFor,from=0,length=0){const out=new Float32Array(Math.max(0,length));
