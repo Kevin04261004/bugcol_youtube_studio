@@ -76,7 +76,7 @@ assert.deepEqual([...read().video.map(c=>[c.start,c.duration])],[[0,.1],[3,.1]],
 // 예전 문장별 장면 프로젝트(version 1)를 열면 트랙으로 옮겨진다
 const legacy={version:1,name:'예전 작업',sentences:[
  {id:1,text:'첫 문장',audio:null,scene:{title:'하나',background:'#112233',duration:2}},
- {id:2,text:'둘째 문장',audio:null,scene:{title:'둘',duration:3}},
+ {id:2,text:'둘째 문장',audio:null,scene:{title:'둘',background:'#171925',duration:3}},
  {id:3,text:'이어가는 문장',audio:null,scene:{continues:true,title:'둘',duration:1}},
 ]};
 await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zipSync({'project.json':strToU8(JSON.stringify(legacy))}).buffer}],value:''}});
@@ -86,6 +86,7 @@ assert.deepEqual([...read().video.map(c=>c.start)],[0,2],'예전 순서대로 �
 assert.deepEqual([...read().video.map(c=>c.duration)],[2,4],'이어간 만큼 앞 조각이 길어진다');
 assert.equal(read().video[0].scene.title,'하나');
 assert.equal(read().video[0].scene.background,'#112233','장면 설정이 보존된다');
+assert.equal(read().video[1].scene.background,'#ffffff','예전 기본 배경(어두운 남색)은 흰색으로 바뀐다');
 assert.equal(read().video[1].scene.continues,undefined,'옮긴 뒤에는 이어가기 표시가 남지 않는다');
 assert.equal(read().audio.length,0,'녹음이 없던 문장은 녹음 트랙을 차지하지 않는다');
 assert.equal(read().totalSeconds,6,'전체 길이는 예전 순차 재생 길이와 같다');

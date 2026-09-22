@@ -26,6 +26,9 @@ const takeOf=c=>sentenceById(c?.sentenceId)?.audio||null;
 // 녹음 조각이 실제로 쓸 수 있는 최대 길이. 녹음 뒤쪽을 넘겨 늘릴 수는 없다.
 const takeRoom=c=>Math.max(MIN_CLIP,(takeOf(c)?.length||0)/RATE-(c?.offset||0));
 const WHITE='#ffffff';
+// 예전 기본 배경(어두운 남색과 회백색)은 열 때 흰색으로 바꾼다. 손으로 고른 색은 그대로 둔다.
+const LEGACY_BG=new Set(['#171925','#f4f4f2']);
+const freshBackground=v=>{if(v&&(!v.background||LEGACY_BG.has(String(v.background).toLowerCase())))v.background=WHITE;return v;};
 const defaultScene=()=>({title:'',subtitle:'',layout:'title',motion:'fade',background:WHITE,reviewed:false});
 function newSentence(text,id){return{id,text,audio:null};}
 function setBusy(value){busy=value;document.body.classList.toggle('busy',value);}
@@ -40,6 +43,7 @@ function adoptProject(saved){if(!saved||!Array.isArray(saved.sentences))return n
  if(next.version!==2)return null;
  next.video??=[];next.audio??=[];next.assets??={};
  if(typeof next.captions!=='boolean')next.captions=!next.video.length||next.video.some(c=>c.scene?.captions);
+ for(const c of next.video)freshBackground(c.scene);
  for(const s of next.sentences)delete s.scene;
  return next;}
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
@@ -126,7 +130,7 @@ if(!shot.bare&&!Array.isArray(v.layers)&&(v.layout!=='full'||!media)){const spli
  const used=textBlock(g,v.title||shot.titleText,x,277,maxW,split?40:52,split?5:4,dark?'#fff':'#1b1b20');
  if(v.subtitle)textBlock(g,v.subtitle,x,Math.min(568,285+used),maxW,22,2,dark?'#c1bacd':'#5d5866');}
 if(captionsOn()&&shot.captionText){g.font='500 24px "Noto Sans KR",sans-serif';const pages=linesFor(g,shot.captionText,1100),pairs=[];for(let i=0;i<pages.length;i+=2)pairs.push(pages.slice(i,i+2));const page=pairs[Math.min(pairs.length-1,Math.floor(Math.min(.999,shot.captionTime/shot.captionSpan)*pairs.length))]||[];const bh=page.length*36+24;g.fillStyle='#111015d9';g.fillRect(55,690-bh,1170,bh);g.textAlign='center';g.fillStyle='white';page.forEach((l,i)=>g.fillText(l,640,690-bh+35+i*36));}}
-function drawScene(canvas,shot,prev=null){const g=canvas.getContext('2d'),k=canvas.width/1280;g.save();g.scale(k,k);if(!shot){g.fillStyle='#171925';g.fillRect(0,0,1280,720);textBlock(g,'다음 이야기는 어떤 장면일까요?',640,338,1000,36,2,'#c6bed8','center');textBlock(g,'대본을 준비하면 이곳에 장면이 나타납니다.',640,394,1000,20,2,'#777386','center');g.restore();return;}
+function drawScene(canvas,shot,prev=null){const g=canvas.getContext('2d'),k=canvas.width/1280;g.save();g.scale(k,k);if(!shot){g.fillStyle=WHITE;g.fillRect(0,0,1280,720);textBlock(g,'다음 이야기는 어떤 장면일까요?',640,338,1000,36,2,'#3b3545','center');textBlock(g,'대본을 준비하면 이곳에 장면이 나타납니다.',640,394,1000,20,2,'#6f6a7b','center');g.restore();return;}
 const v=shot.scene,move=shot.still||shot.bare?{alpha:1,shiftX:0,covers:false}:sceneEntrance(v.motion,shot.sceneTime),under=move.covers&&prev?.scene;
 if(under)paintScene(g,prev);else{g.fillStyle=v.background||WHITE;g.fillRect(0,0,1280,720);}
 g.save();g.globalAlpha=move.alpha;g.translate(move.shiftX,0);paintScene(g,shot);g.restore();g.restore();}
@@ -182,7 +186,7 @@ async function previewAll(){if(busy||recording)return;if(previewing){stopPlaybac
     drawScene($('preview'),shot);$('previewTime').textContent=time(t)+' / '+time(end);
     if(t>=end)resolve();else requestAnimationFrame(tick);}catch(e){toast(e.message);stopPlayback();resolve();}};tick();});
   if(token===previewToken)stopPlayback();}catch(e){stopPlayback();toast(e.message);}}
-const ASTRA_GUIDE=`# 버콜 스튜디오 · Astra 장면 제작 요청\n\n이 ZIP의 manifest.json과 숫자 WAV를 읽고 각 문장에 어울리는 이미지·애니메이션 장면 패키지를 만들어 주세요. 녹음 순서는 id 순서이며 길이는 durationSeconds입니다. 대사는 그대로 유지하세요.\n\n## 반환 ZIP 규격 (version: 1)\nZIP 최상위에 scenes.json, 소재는 assets/에 넣으세요. 외부 URL과 실행 코드, HTML은 받지 않습니다. 이미지는 PNG/JPG/WebP, 영상은 MP4/WebM입니다. 폰트·텍스트·기본 애니메이션은 편집기의 동일한 캔버스 렌더러가 재현합니다. 복잡한 애니메이션은 16:9 영상으로 렌더해 소재로 넣으세요.\n\nscenes.json 예시:\n\n{\n  "version": 1,\n  "scenes": [\n    { "id": 1, "title": "첫 번째 이야기", "subtitle": "짧은 보조 문구", "asset": "assets/001.png", "layout": "split", "motion": "fade", "background": "#171925", "captions": true }\n  ]\n}\n\n- id: manifest.json의 문장 id(정수)와 정확히 일치. 중복 금지.\n- title, subtitle: 텍스트. title이 비면 대사를 사용. title은 한글 65자 이내 권장(긴 경우 화면에서 생략됨).\n- asset: ZIP 내부의 상대 경로. 생략하면 타이틀 페이지.\n- layout: title(텍스트 중심), split(좌 텍스트·우 소재), full(전체 소재).\n- motion: fade / zoom / slide / none. duration은 음성 길이로 자동 결정.\n- background: #RRGGBB. captions: true/false.\n- 1280×720 또는 1920×1080의 16:9. 안전 여백 5%.\n- 영상은 녹음 길이 이상 권장. 짧은 영상은 마지막 프레임을 유지. 영상 원음은 사용하지 않음. 자막 페이지는 녹음 길이에 비례해 전환하며 단어 단위 동기화가 아님.\n- HTML/CSS/JS 페이지는 직접 지원하지 않으므로 이미지나 영상으로 변환 후 넣기.\n- 파일 이름만 숫자인 이미지·영상(001.png, 002.mp4)도 직접 가져올 수 있음.\n\nAstra는 별도 대화에서 이 패키지를 제작합니다. 편집기는 AI 서비스에 자동으로 접속하지 않습니다.\n`;
+const ASTRA_GUIDE=`# 버콜 스튜디오 · Astra 장면 제작 요청\n\n이 ZIP의 manifest.json과 숫자 WAV를 읽고 각 문장에 어울리는 이미지·애니메이션 장면 패키지를 만들어 주세요. 녹음 순서는 id 순서이며 길이는 durationSeconds입니다. 대사는 그대로 유지하세요.\n\n## 반환 ZIP 규격 (version: 1)\nZIP 최상위에 scenes.json, 소재는 assets/에 넣으세요. 외부 URL과 실행 코드, HTML은 받지 않습니다. 이미지는 PNG/JPG/WebP, 영상은 MP4/WebM입니다. 폰트·텍스트·기본 애니메이션은 편집기의 동일한 캔버스 렌더러가 재현합니다. 복잡한 애니메이션은 16:9 영상으로 렌더해 소재로 넣으세요.\n\nscenes.json 예시:\n\n{\n  "version": 1,\n  "scenes": [\n    { "id": 1, "title": "첫 번째 이야기", "subtitle": "짧은 보조 문구", "asset": "assets/001.png", "layout": "split", "motion": "fade", "background": "#ffffff", "captions": true }\n  ]\n}\n\n- id: manifest.json의 문장 id(정수)와 정확히 일치. 중복 금지.\n- title, subtitle: 텍스트. title이 비면 대사를 사용. title은 한글 65자 이내 권장(긴 경우 화면에서 생략됨).\n- asset: ZIP 내부의 상대 경로. 생략하면 타이틀 페이지.\n- layout: title(텍스트 중심), split(좌 텍스트·우 소재), full(전체 소재).\n- motion: fade / zoom / slide / none. duration은 음성 길이로 자동 결정.\n- background: #RRGGBB. captions: true/false.\n- 1280×720 또는 1920×1080의 16:9. 안전 여백 5%.\n- 영상은 녹음 길이 이상 권장. 짧은 영상은 마지막 프레임을 유지. 영상 원음은 사용하지 않음. 자막 페이지는 녹음 길이에 비례해 전환하며 단어 단위 동기화가 아님.\n- HTML/CSS/JS 페이지는 직접 지원하지 않으므로 이미지나 영상으로 변환 후 넣기.\n- 파일 이름만 숫자인 이미지·영상(001.png, 002.mp4)도 직접 가져올 수 있음.\n\nAstra는 별도 대화에서 이 패키지를 제작합니다. 편집기는 AI 서비스에 자동으로 접속하지 않습니다.\n`;
 function zipAsync(files){return new Promise((resolve,reject)=>zip(files,{level:0},(e,data)=>e?reject(e):resolve(data)));}
 const trackManifest=()=>({version:2,name:project.name,captions:captionsOn(),sampleRate:RATE,channels:1,
  sentences:project.sentences.map(s=>({id:s.id,text:s.text,audio:s.audio?pad(s.id)+'.wav':null,durationSeconds:duration(s)})),
@@ -204,7 +208,7 @@ async function importSceneFiles(fileList,replace=false){if(replace&&!clip())retu
 function checkScene(raw,slot,files,assets){const scene=validScene({...raw,id:slot});delete scene.id;delete scene.continues;
  if(scene.asset){if(!files[scene.asset])delete scene.asset;else assets[scene.asset]=new Blob([files[scene.asset]],{type:blobType(scene.asset)});}
  for(const l of scene.layers||[])if(l.asset){if(!files[l.asset])throw Error('레이어 소재 누락: '+l.asset);assets[l.asset]=new Blob([files[l.asset]],{type:blobType(l.asset)});}
- return{...defaultScene(),...scene,reviewed:!!raw?.reviewed};}
+ return freshBackground({...defaultScene(),...scene,reviewed:!!raw?.reviewed});}
 async function restoreProject(file){if(busy||recording)return;if((project.sentences.length||project.video.length)&&!confirm('현재 작업을 이 ZIP의 프로젝트로 교체할까요?'))return;setBusy(true);try{const files=readZip(new Uint8Array(await file.arrayBuffer())),raw=files['project.json']||files['manifest.json'];if(!raw)throw Error('프로젝트 또는 녹음 ZIP을 선택하세요.');const m=JSON.parse(strFromU8(raw));if(![1,2].includes(m.version)||!Array.isArray(m.sentences)||m.sentences.length>2000)throw Error('지원하지 않는 프로젝트입니다.');
  const next={version:2,name:String(m.name||'가져온 프로젝트'),captions:m.captions!==false,sentences:[],video:[],audio:[],assets:{}},ids=new Set(),legacy=[];
  for(const item of m.sentences){if(typeof item.text!=='string')throw Error('문장 텍스트 오류');
