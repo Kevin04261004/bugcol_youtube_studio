@@ -99,7 +99,7 @@ assert.deepEqual(errors,[]);
  };
  $('edNewScene').click();
  const slot=read().video.length-1;
- $('edScenes').querySelector('[data-scene="'+slot+'"]').click();
+ {const at=read().video[slot].start;$('edScrub').value=String(at);$('edScrub').dispatchEvent(new window.Event('input',{bubbles:true}));}
  $('edAddText').click();
  $('edFill').click();
  const filled=read().video[slot];

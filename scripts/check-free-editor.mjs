@@ -26,7 +26,7 @@ assert.equal(read().video.length,0,'대본은 영상 트랙을 건드리지 않�
 $('edNewScene').click();$('edNewScene').click();
 assert.equal(read().video.length,2);
 assert.equal(read().captions,true,'자막은 프로젝트 전체 스위치 하나로 켜고 끈다');
-const pickClip=i=>$('edScenes').querySelector('[data-scene="'+i+'"]').click();
+const pickClip=i=>{const at=read().video[i].start;$('edScrub').value=String(at);$('edScrub').dispatchEvent(new window.Event('input',{bubbles:true}));};
 pickClip(0);
 $('edAddText').click();assert.equal(read().video[0].scene.layers.length,1);
 $('edText').value='편집 테스트';$('edText').dispatchEvent(new window.Event('change'));
@@ -42,7 +42,8 @@ $('edRedo').click();assert.equal(read().video[0].scene.layers.length,2);
 
 // 영상 트랙 줄은 없다 — 소재를 직접 놓고 쓴다
 assert.equal($('edTracks').querySelectorAll('[data-shot]').length,0,'영상 조각 줄은 타임라인에 없다');
-assert.equal($('edScenes').querySelectorAll('[data-scene]').length,2,'조각은 위쪽 칩으로 고른다');
+assert.equal(window.document.getElementById('edScenes'),null,'조각 칩 줄은 없앴다 — 재생 머리나 소재를 눌러 고른다');
+assert.equal(window.document.getElementById('edEarlier'),null,'순서 버튼도 없앴다');
 assert.equal($('edTracks').querySelectorAll('[data-clip]').length,2,'소재는 절대 시각으로 트랙에 펼쳐진다');
 assert.equal($('edTracks').querySelectorAll('[data-take]').length,0,'녹음이 없으면 녹음 트랙은 비어 있다');
 
@@ -70,8 +71,7 @@ assert.equal(read().video[0].duration,.1);
 assert.equal(read().video[1].start,3,'앞 조각을 줄여도 뒤 조각은 제자리에 남는다');
 pickClip(1);
 $('edDuration').value='.1';$('edDuration').dispatchEvent(new window.Event('change'));
-$('edEarlier').click();
-assert.deepEqual([...read().video.map(c=>c.start)],[0,3],'순서 바꾸기는 두 조각의 자리를 맞바꾼다');
+assert.deepEqual([...read().video.map(c=>[c.start,c.duration])],[[0,.1],[3,.1]],'조각마다 길이가 따로 남는다');
 
 // 예전 문장별 장면 프로젝트(version 1)를 열면 트랙으로 옮겨진다
 const legacy={version:1,name:'예전 작업',sentences:[

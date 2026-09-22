@@ -498,7 +498,7 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  async draw(at,editing){const version=++editorDrawVersion,c=clip(),inside=c&&at>=c.start&&at<clipEnd(c);
   const shot=inside?shotOf(c,at-c.start,at):shotAt(at);if(!shot)return drawScene($('preview'),null);shot.still=editing;shot.editing=editing;await prepareLayers(shot);shot.media=await loadMedia(shot.assetName);await seekLayers(shot);await showMedia(shot.media,shot.scene,shot.sceneTime);if(version===editorDrawVersion)drawScene($('preview'),shot);},
  empty:()=>drawScene($('preview'),null),addScene:addFreeScene,deleteScene:()=>deleteClip(clipIndex),
- reorder:(i,j)=>{const a=project.video[i],b=project.video[j];if(!a||!b)return;const start=a.start;moveClip(a,b.start);moveClip(b,start);project.video.sort((x,y)=>x.start-y.start);clipIndex=project.video.indexOf(a);changed();render();},select:selectClip,
+ select:selectClip,
  captions:captionsOn,setCaptions:v=>{project.captions=!!v;changed();render();},
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
  prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
