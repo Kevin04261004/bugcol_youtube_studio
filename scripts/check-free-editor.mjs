@@ -26,7 +26,8 @@ assert.equal(read().video.length,0,'대본은 영상 트랙을 건드리지 않�
 $('edNewScene').click();$('edNewScene').click();
 assert.equal(read().video.length,2);
 assert.equal(read().video[0].scene.captions,false,'빈 조각은 자막을 끄고 시작한다');
-$('edTracks').querySelector('[data-shot="0"]').click();
+const pickClip=i=>$('edScenes').querySelector('[data-scene="'+i+'"]').click();
+pickClip(0);
 $('edAddText').click();assert.equal(read().video[0].scene.layers.length,1);
 $('edText').value='편집 테스트';$('edText').dispatchEvent(new window.Event('change'));
 $('prop_x').value='300';$('prop_x').dispatchEvent(new window.Event('change'));
@@ -39,10 +40,10 @@ $('edDuplicate').click();assert.equal(read().video[0].scene.layers.length,2);
 $('edUndo').click();assert.equal(read().video[0].scene.layers.length,1);
 $('edRedo').click();assert.equal(read().video[0].scene.layers.length,2);
 
-// 트랙은 절대 시각으로 놓인다 — 두 번째 조각은 첫 조각 3초 뒤
-assert.equal($('edTracks').querySelectorAll('[data-shot]').length,2,'영상 조각이 각각 트랙에 보인다');
-assert.equal($('edTracks').querySelectorAll('[data-clip]').length,2,'조각 안 소재도 트랙에 펼쳐진다');
-assert.equal($('edTracks').querySelector('[data-shot="1"]').style.left,'322px','두 번째 조각은 3초 자리(130+3×64)에서 시작한다');
+// 영상 트랙 줄은 없다 — 소재를 직접 놓고 쓴다
+assert.equal($('edTracks').querySelectorAll('[data-shot]').length,0,'영상 조각 줄은 타임라인에 없다');
+assert.equal($('edScenes').querySelectorAll('[data-scene]').length,2,'조각은 위쪽 칩으로 고른다');
+assert.equal($('edTracks').querySelectorAll('[data-clip]').length,2,'소재는 절대 시각으로 트랙에 펼쳐진다');
 assert.equal($('edTracks').querySelectorAll('[data-take]').length,0,'녹음이 없으면 녹음 트랙은 비어 있다');
 
 // 프로젝트 ZIP 왕복 — 트랙이 그대로 살아 돌아온다
@@ -67,7 +68,7 @@ window.AudioContext=class {constructor(){this.state='running';this.started=Date.
 $('edDuration').value='.1';$('edDuration').dispatchEvent(new window.Event('change'));
 assert.equal(read().video[0].duration,.1);
 assert.equal(read().video[1].start,3,'앞 조각을 줄여도 뒤 조각은 제자리에 남는다');
-$('edTracks').querySelector('[data-shot="1"]').click();
+pickClip(1);
 $('edDuration').value='.1';$('edDuration').dispatchEvent(new window.Event('change'));
 $('edEarlier').click();
 assert.deepEqual([...read().video.map(c=>c.start)],[0,3],'순서 바꾸기는 두 조각의 자리를 맞바꾼다');
@@ -92,8 +93,7 @@ assert.equal(read().totalSeconds,6,'전체 길이는 예전 순차 재생 길이
 // 레이어를 손으로 조각 전체에 딱 맞게 끌어 맞추는 건 모바일에서 거의 불가능해서,
 // 한 번에 화면 전체·조각 전체 길이로 채우는 버튼을 뒀다.
 $('edNewScene').click();
-$('edTracks').querySelectorAll('[data-shot]');
-$('edTracks').querySelector('[data-shot="'+(read().video.length-1)+'"]').click();
+pickClip(read().video.length-1);
 $('edDuration').value='6';$('edDuration').dispatchEvent(new window.Event('change',{bubbles:true}));
 $('edAddText').click();
 $('prop_x').value='200';$('prop_x').dispatchEvent(new window.Event('change'));

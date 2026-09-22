@@ -483,7 +483,10 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  importAudio:()=>$('batchAudioInput').click(),
  move:(track,id,start)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)moveClip(c,start);},
  // 소재가 조각 밖으로 나가면 조각을 늘려 품게 한다. 늘어난 만큼 뒤 조각은 밀린다.
- growClip:(index,need)=>{const c=project.video[index];if(!c||!(need>c.duration))return;trimRipple(project.video,c,'end',c.start+Math.min(600,need));},
+ growClip:(index,need)=>{const c=project.video[index];if(!c||!(need>c.duration))return;
+  // 조각이 늘어날 때 '끝까지' 쓰던 다른 소재가 같이 늘어나면 안 되니, 지금 보이는 끝에 붙들어 둔다.
+  for(const l of c.scene.layers||[])if(!l.end)l.end=c.duration;
+  trimRipple(project.video,c,'end',c.start+Math.min(600,need));},
  trim:(track,id,edge,at)=>{const list=track==='audio'?project.audio:project.video,c=list.find(x=>x.id===id);if(c)trimRipple(list,c,edge,at,track==='audio'?takeRoom(c):Infinity);},
  dropTake:(sentenceId,start)=>{const s=sentenceById(sentenceId);if(!s?.audio?.length)return toast('먼저 이 문장을 녹음하세요.');placeTake(s,start);changed();render();},
  removeTake:id=>{project.audio=project.audio.filter(c=>c.id!==id);changed();render();},

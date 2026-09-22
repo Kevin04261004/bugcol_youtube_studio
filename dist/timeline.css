@@ -4,16 +4,13 @@
 #edTracks .track-ruler{height:34px;position:sticky;top:0;z-index:5;background:#171b20;cursor:crosshair}
 #edTracks .timeline-rail{position:sticky;left:0;display:flex;align-items:center;box-sizing:border-box;width:130px;height:100%;padding:0 12px;background:#1c2127!important;border-right:1px solid #3b444e;z-index:4;font-size:11px;font-weight:500;color:#bec8d2}
 #edTracks .track-row{height:54px;background:repeating-linear-gradient(90deg,transparent 0,transparent 63px,#ffffff04 63px,#ffffff04 64px)}
-#edTracks .video-track,#edTracks .narration-track{height:58px}
-#freeEditor #edTracks .clip-bar,#freeEditor #edTracks .take-bar{position:absolute;top:5px;height:48px;box-sizing:border-box;border-radius:6px;display:flex;align-items:center;justify-content:space-between;overflow:hidden;cursor:grab;touch-action:none;padding:0;min-width:0;text-align:left}
-#freeEditor #edTracks .clip-bar{background:#2f3a48;border:1px solid #5a6a7d;color:#e4ecf5}
-#edTracks .clip-swatch{width:5px;align-self:stretch;flex:none;pointer-events:none}
+#edTracks .narration-track{height:58px}
+#freeEditor #edTracks .take-bar{position:absolute;top:5px;height:48px;box-sizing:border-box;border-radius:6px;display:flex;align-items:center;justify-content:space-between;overflow:hidden;cursor:grab;touch-action:none;padding:0;min-width:0;text-align:left}
 #freeEditor #edTracks .take-bar{background:#304438;border:1px solid #54735e;color:#cfe6cd}
 #freeEditor #edTracks .take-bar.silent{background:#283b30;border-style:dashed;opacity:.6}
-#edTracks .clip-bar>span,#edTracks .take-bar>span{flex:1;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;pointer-events:none}
-#edTracks .clip-bar small{padding-right:8px;font-size:9px;color:#aebbc9;pointer-events:none}
-#edTracks .clip-bar i,#edTracks .take-bar i,#edTracks .layer-bar i{width:10px;min-width:6px;height:100%;background:#ffffff26;cursor:ew-resize;flex:none;touch-action:none}
-#edTracks .clip-bar i:hover,#edTracks .take-bar i:hover{background:#c6f17e88}
+#edTracks .take-bar>span{flex:1;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;pointer-events:none}
+#edTracks .take-bar i,#edTracks .layer-bar i{width:10px;min-width:6px;height:100%;background:#ffffff26;cursor:ew-resize;flex:none;touch-action:none}
+#edTracks .take-bar i:hover{background:#c6f17e88}
 /* 파형은 막대 전체에 깔고 글자는 그 위에 얹는다. */
 #edTracks .timeline-wave{position:absolute;left:10px;right:10px;top:50%;transform:translateY(-50%);width:auto;height:30px;stroke:#a7d6ac;stroke-width:.55;opacity:.5;fill:none;pointer-events:none}
 #edTracks .take-bar>span{position:relative;z-index:1}
@@ -34,7 +31,7 @@
  #freeEditor .timeline-tools h2{width:auto;margin-right:auto!important}
  #freeEditor .timeline-tools{gap:5px}
  #freeEditor .track-scroll{max-height:320px;min-height:250px}
- #edTracks .clip-bar i,#edTracks .take-bar i,#edTracks .layer-bar i{width:16px;min-width:12px}
+ #edTracks .take-bar i,#edTracks .layer-bar i{width:16px;min-width:12px}
  #edTracks .timeline-rail{font-size:10px}
  #freeEditor #edFullPlay{font-size:10px}
 }

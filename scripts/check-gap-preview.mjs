@@ -97,7 +97,7 @@ assert.deepEqual(errors,[]);
  };
  $('edNewScene').click();
  const slot=read().video.length-1;
- $('edTracks').querySelector('[data-shot="'+slot+'"]').click();
+ $('edScenes').querySelector('[data-scene="'+slot+'"]').click();
  $('edAddText').click();
  $('edFill').click();
  const filled=read().video[slot];
