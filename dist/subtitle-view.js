@@ -175,20 +175,20 @@ export function createSubtitleStudio(host,hooks={}){
   const file=saveBlob(new Blob(chunks,{type}),(name||'영상').replace(/\.[^.]+$/,'')+'-자막'+(type.includes('mp4')?'.mp4':'.webm'));
   state('다 됐습니다 · '+file);
  }
+ // 타임라인 편집 화면의 자막과 같은 크기·자리로 그린다(1280×720 기준 24px, 아래에서 30px, 폭 1170).
  function drawCaption(g,canvas,text){
   if(!text)return;
-  const size=Math.round(canvas.height*.055),pad=Math.round(size*.9);
-  g.font=`700 ${size}px "Noto Sans KR",sans-serif`;g.textAlign='center';g.textBaseline='middle';
-  const max=canvas.width*.86,lines=[];
+  const k=canvas.height/720,size=Math.round(24*k),step=Math.round(36*k);
+  g.font=`500 ${size}px "Noto Sans KR",sans-serif`;g.textAlign='center';g.textBaseline='alphabetic';
+  const max=canvas.width*(1100/1280),lines=[];
   for(const paragraph of text.split('\n')){let line='';
    for(const ch of paragraph){if(g.measureText(line+ch).width>max&&line){lines.push(line);line=ch;}else line+=ch;}
    lines.push(line);}
-  const height=lines.length*size*1.35+pad,top=canvas.height-height-Math.round(canvas.height*.06);
-  g.fillStyle='rgba(0,0,0,.72)';g.fillRect(canvas.width*.05,top,canvas.width*.9,height);
+  const height=lines.length*step+Math.round(24*k),bottom=canvas.height-Math.round(30*k),top=bottom-height;
+  g.fillStyle='#111015d9';g.fillRect(canvas.width*(55/1280),top,canvas.width*(1170/1280),height);
   g.fillStyle='#fff';
-  lines.forEach((line,i)=>g.fillText(line,canvas.width/2,top+pad/2+size*.7+i*size*1.35,max));
+  lines.forEach((line,i)=>g.fillText(line,canvas.width/2,top+Math.round(35*k)+i*step,max));
  }
-
  $('subOpen').onclick=()=>$('subFile').click();
  $('subFile').onchange=e=>{load(e.target.files[0]);e.target.value='';};
  $('subScreen').ondragover=e=>e.preventDefault();
