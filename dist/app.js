@@ -68,6 +68,12 @@ function rekeyAsset(from,to){if(!project.assets[from]||project.assets[to])return
  project.assets[to]=project.assets[from];delete project.assets[from];
  for(const c of project.video){if(c.scene.asset===from)c.scene.asset=to;
   for(const l of c.scene.layers||[])if(l.asset===from)l.asset=to;}}
+function relocateFolder(from,to){const path=folderPath(to);if(!path||path===from||!from?.startsWith('media/'))return null;
+ if(folderTaken(path))return toast('같은 이름의 폴더가 이미 있습니다.'),null;
+ const swap=k=>k===from||k.startsWith(from+'/')?path+k.slice(from.length):k;
+ project.folders=(project.folders||[]).map(swap);
+ for(const key of Object.keys(project.assets))if(key.startsWith(from+'/'))rekeyAsset(key,swap(key));
+ clearMedia();changed();render();return path;}
 function pruneAssets(){for(const key of unusedAssetKeys(Object.keys(project.assets),project.video.flatMap(c=>[c.scene.asset,...(c.scene.layers||[]).map(l=>l.asset)]).concat(Object.keys(project.assets).filter(k=>k.startsWith('media/')))))delete project.assets[key];}
 function deleteSentence(i){
  if(recording||busy)return toast('녹음이나 파일 처리가 끝난 뒤에 지울 수 있습니다.');
@@ -539,8 +545,14 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
    project.folders??=[];if(dir&&dir!=='media'&&!project.folders.includes(dir))project.folders.push(dir);
    changed();render();toast('공용 소재함에서 가져왔습니다.');}
   catch(e){toast('가져오지 못했습니다: '+e.message);}finally{setBusy(false);}},
- shareToLibrary:async keys=>{if(!cloud)return;
-  try{const added=await cloud.addToLibrary(keys.map(key=>({key,blob:project.assets[key]})));
+ libraryRename:async(key,name)=>{try{await cloud?.renameLibraryAsset(key,name);}catch(e){toast('이름을 바꾸지 못했습니다: '+e.message);}},
+ libraryMove:async(key,folder)=>{try{await cloud?.moveLibraryAsset(key,folder);}catch(e){toast('옮기지 못했습니다: '+e.message);}},
+ libraryFolderRename:async(path,name)=>{try{await cloud?.relocateLibraryFolder(path,path.split('/').slice(0,-1).concat(name).join('/'));}catch(e){toast('이름을 바꾸지 못했습니다: '+e.message);}},
+ libraryFolderMove:async(path,parent)=>{try{await cloud?.relocateLibraryFolder(path,parent+'/'+path.split('/').pop());}catch(e){toast('옮기지 못했습니다: '+e.message);}},
+ libraryNewFolder:async path=>{try{await cloud?.addLibraryFolder(path);}catch(e){toast('폴더를 만들지 못했습니다: '+e.message);}},
+ libraryRemove:async key=>{try{await cloud?.removeFromLibrary(key);}catch(e){toast('내리지 못했습니다: '+e.message);}},
+ shareToLibrary:async(keys,folder)=>{if(!cloud)return;
+  try{const added=await cloud.addToLibrary(keys.map(key=>({key:folder&&folder!=='media'?folder+'/'+key.split('/').pop():key,blob:project.assets[key]})));
    if(added)toast(added+'개를 계정 공용 소재함에 올렸습니다.');}
   catch(e){toast('공용 소재함에 올리지 못했습니다: '+e.message);}},
  dropFromLibrary:async key=>{if(!project.assets[key]&&cloud)project.assets[key]=await cloud.libraryBlob(key);},
@@ -548,12 +560,20 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
  folders:()=>project.folders||(project.folders=[]),
  addFolder:name=>{const path=folderPath(name);if(!path)return null;project.folders??=[];
   if(!project.folders.includes(path))project.folders.push(path);changed();render();return path;},
- renameFolder:(from,to)=>{const path=folderPath(to);if(!path||path===from||!from.startsWith('media/'))return null;
-  if(folderTaken(path))return toast('같은 이름의 폴더가 이미 있습니다.'),null;
-  const swap=k=>k===from||k.startsWith(from+'/')?path+k.slice(from.length):k;
-  project.folders=(project.folders||[]).map(swap);
-  for(const key of Object.keys(project.assets))if(key.startsWith(from+'/'))rekeyAsset(key,swap(key));
-  clearMedia();changed();render();return path;},
+ renameFolder:relocateFolder,
+ // 폴더를 다른 폴더 안으로 옮긴다. 자기 자신이나 자기 속으로는 못 들어간다.
+ moveFolder:(path,parent)=>{if(!path?.startsWith('media/')||!parent)return null;
+  if(parent===path||parent.startsWith(path+'/'))return toast('폴더를 자기 안으로 옮길 수는 없습니다.'),null;
+  return relocateFolder(path,parent+'/'+path.split('/').pop());},
+ // 소재 이름 바꾸기 — 확장자는 그대로 두고, 그 소재를 쓰던 블록도 따라간다.
+ renameAsset:(key,name)=>{const clean=String(name||'').replace(/[\/\\]/g,'').trim();
+  if(!clean||!project.assets[key])return null;
+  const dir=key.split('/').slice(0,-1).join('/'),old=key.split('/').pop();
+  const ext=old.includes('.')?old.slice(old.lastIndexOf('.')):'';
+  const to=dir+'/'+(clean.includes('.')?clean:clean+ext);
+  if(to===key)return key;
+  if(project.assets[to])return toast('같은 이름의 소재가 이미 있습니다.'),null;
+  rekeyAsset(key,to);clearMedia();changed();render();return to;},
  removeFolder:path=>{if(!path?.startsWith('media/'))return;
   if(Object.keys(project.assets).some(k=>k.startsWith(path+'/'))||(project.folders||[]).some(f=>f.startsWith(path+'/')))
    return toast('폴더를 비운 뒤에 지울 수 있습니다.');

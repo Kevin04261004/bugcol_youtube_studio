@@ -148,11 +148,32 @@ legacyList=false;
  row.click();await wait(700);
  assert.ok(window.document.querySelector('#edAssets [data-asset$="공용.png"]'),'눌러서 이 작업으로 가져온다');
 
+ // 계정 소재함에서도 이름을 바꾸고 폴더로 옮긴다
+ const libDoc=async()=>(await(await window.fetch('/api/folders/'+lib.id)).json()).project;
+ {
+  const row=window.document.querySelector('#edAssets [data-lib$="공용.png"]');
+  row.querySelector('[data-librename]').click();
+  const input=row.querySelector('.row-rename');
+  assert.ok(input,'공용 소재 줄에서도 이름 칸이 열린다');
+  input.value='로고';input.onblur();await wait(600);
+  assert.ok(Object.keys((await libDoc()).assets).some(k=>k.endsWith('로고.png')),'계정 소재함에서 이름이 바뀐다');
+
+  window.document.querySelector('#edAssets [data-libnew]').click();await wait(600);
+  const made=(await libDoc()).folders.find(f=>f.includes('새 폴더'));
+  assert.ok(made,'계정 소재함에도 폴더를 만든다');
+
+  const target=window.document.querySelector(`#edAssets [data-libfolder="${made}"]`);
+  const move=new window.Event('drop',{bubbles:true});
+  move.dataTransfer={getData:t=>t==='text/libasset'?'media/로고.png':''};
+  target.dispatchEvent(move);await wait(700);
+  assert.ok(Object.keys((await libDoc()).assets).includes(made+'/로고.png'),'끌어다 놓으면 그 폴더로 옮겨진다');
+ }
+
  // 같은 그림을 또 올려도 서버에는 한 벌만 쌓인다
  const again=(await(await window.fetch('/api/folders/'+lib.id)).json()).project;
  assert.equal(Object.keys(again.assets).length,shared.length,'같은 소재가 공용 소재함에 두 번 쌓이지 않는다');
 }
 
 assert.deepEqual(errors,[]);
-console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project, timeline counts on every folder row, and an account-wide asset library');
+console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project, timeline counts on every folder row, an account-wide asset library, and renaming or moving inside it');
 await window.happyDOM.abort();

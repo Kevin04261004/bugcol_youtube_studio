@@ -96,7 +96,7 @@ export function createFreeEditor(h){
  const iconOf=key=>/\.(mp4|webm)$/i.test(key)?'▷':/\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(key)?'♫':/\.gif$/i.test(key)?'◨':'▧';
  function treeRows(folder,depth,folders,out){
   const open=!closed.has(folder);
-  out.push(`<div class="tree-row tree-folder${open?' open':''}${pickedFolder===folder?' picked':''}" data-folder="${esc(folder)}" style="--d:${depth}">`
+  out.push(`<div class="tree-row tree-folder${open?' open':''}${pickedFolder===folder?' picked':''}" data-folder="${esc(folder)}" draggable="${folder!==ROOT}" style="--d:${depth}">`
    +`<button class="twisty" data-toggle="${esc(folder)}" aria-label="${open?'접기':'펼치기'}">${open?'▼':'▶'}</button>`
    +`<span class="row-label">▣ ${esc(folderName(folder))}</span>`
    +(folder===ROOT?'':`<button class="row-x" data-folder-remove="${esc(folder)}" title="빈 폴더 삭제" aria-label="폴더 삭제">×</button>`)+'</div>');
@@ -111,22 +111,38 @@ export function createFreeEditor(h){
    out.push(`<button class="tree-row asset-card" data-asset="${esc(key)}" title="${esc(key)}" style="--d:${depth+1}">`
     +(/\.(png|jpe?g|webp|gif)$/i.test(key)?`<img src="${assetUrl(key)}" alt="" loading="lazy">`:`<i class="row-icon">${iconOf(key)}</i>`)
     +`<span class="row-label">${esc(key.split('/').pop())}</span>`+(/\.gif$/i.test(key)?'<em class="gif-tag">GIF</em>':'')
+    +rowButton('rename',key,'✎','이름 바꾸기')
     +`<em class="row-share" data-share="${esc(key)}" title="계정 공용 소재함에 올리기" role="button">↑</em>`+'</button>');
  }
+ // 줄 위에서 바로 이름을 고친다. 소재 줄은 누르면 타임라인에 들어가니 ✎ 로만 연다.
+ function startRename(row,current,commit){const label=row.querySelector('.row-label');if(!label)return;
+  const input=document.createElement('input');input.className='row-rename';input.value=current;
+  label.replaceWith(input);input.focus();input.select();
+  let done=false;
+  const finish=save=>{if(done)return;done=true;input.onblur=null;
+   const value=input.value.trim();
+   if(save&&value&&value!==current)commit(value);else{renderAssets();filterAssets();}};
+  input.onpointerdown=e=>e.stopPropagation();input.onclick=e=>e.stopPropagation();
+  input.onblur=()=>finish(true);
+  input.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')finish(true);if(e.key==='Escape')finish(false);};}
+ const rowButton=(kind,key,mark,title)=>`<em class="row-act" data-${kind}="${esc(key)}" title="${title}" role="button">${mark}</em>`;
  function libFolders(){const set=new Set([ROOT]);
   for(const f of h.libraryFolders())if(f?.startsWith(ROOT))for(const p of f.split('/').map((_,i,a)=>a.slice(0,i+1).join('/')))if(p.startsWith(ROOT))set.add(p);
   for(const key of Object.keys(h.library())){const parts=key.split('/');parts.pop();
    for(let i=1;i<=parts.length;i++)set.add(parts.slice(0,i).join('/'));}
   return set;}
  function libTree(folder,depth,folders,out){const open=!closed.has(LIB+folder);
-  out.push(`<div class="tree-row tree-folder lib-row${open?' open':''}" data-libfolder="${esc(folder)}" style="--d:${depth}">`
+  out.push(`<div class="tree-row tree-folder lib-row${open?' open':''}" data-libfolder="${esc(folder)}" draggable="${folder!==ROOT}" style="--d:${depth}">`
    +`<button class="twisty" data-toggle="${esc(LIB+folder)}" aria-label="${open?'접기':'펼치기'}">${open?'▼':'▶'}</button>`
-   +`<span class="row-label">${folder===ROOT?'☁ 계정 소재함':'▣ '+esc(folderName(folder))}</span></div>`);
+   +`<span class="row-label">${folder===ROOT?'☁ 계정 소재함':'▣ '+esc(folderName(folder))}</span>`
+   +rowButton('libnew',folder,'＋','이 안에 폴더 만들기')+'</div>');
   if(!open)return;
   for(const child of [...folders].filter(f=>parentOf(f)===folder).sort())libTree(child,depth+1,folders,out);
   for(const key of Object.keys(h.library()).filter(k=>parentOf(k)===folder).sort()){const mine=!!h.assets()[key];
    out.push(`<button class="tree-row lib-item${mine?' mine':''}" data-lib="${esc(key)}" title="${esc(key)}${mine?' · 이미 이 작업에 있음':' · 눌러서 이 작업에 넣기'}" style="--d:${depth+1}">`
-    +`<i class="row-icon">${iconOf(key)}</i><span class="row-label">${esc(key.split('/').pop())}</span><b>${mine?'✓':'＋'}</b></button>`);}}
+    +`<i class="row-icon">${iconOf(key)}</i><span class="row-label">${esc(key.split('/').pop())}</span>`
+    +rowButton('librename',key,'✎','이름 바꾸기')+rowButton('libremove',key,'×','계정 소재함에서 내리기')
+    +`<b>${mine?'✓':'＋'}</b></button>`);}}
  function renderAssets(){const keys=Object.keys(h.assets());
   for(const[key,v]of urls)if(!h.assets()[key]){URL.revokeObjectURL(v.url);urls.delete(key);}
   $('mediaCount').textContent=keys.length;
@@ -136,7 +152,30 @@ export function createFreeEditor(h){
   const shared=Object.keys(h.library()).length||h.libraryFolders().length;
   if(shared)libTree(ROOT,0,libFolders(),rows);
   $('edAssets').innerHTML=rows.join('');
-  $('edAssets').querySelectorAll('[data-lib]').forEach(el=>{el.onclick=()=>h.useLibrary(el.dataset.lib);});
+  const stop=e=>e.stopPropagation();
+  $('edAssets').querySelectorAll('[data-lib]').forEach(el=>{const key=el.dataset.lib;
+   el.onclick=()=>h.useLibrary(key);
+   el.draggable=true;el.ondragstart=e=>{e.dataTransfer.setData('text/libasset',key);e.stopPropagation();};});
+  $('edAssets').querySelectorAll('[data-rename]').forEach(el=>{el.onpointerdown=stop;
+   el.onclick=e=>{stop(e);const key=el.dataset.rename;startRename(el.closest('.tree-row'),key.split('/').pop(),v=>h.renameAsset(key,v));};});
+  $('edAssets').querySelectorAll('[data-librename]').forEach(el=>{el.onpointerdown=stop;
+   el.onclick=e=>{stop(e);const key=el.dataset.librename;startRename(el.closest('.tree-row'),key.split('/').pop(),v=>h.libraryRename(key,v));};});
+  $('edAssets').querySelectorAll('[data-libremove]').forEach(el=>{el.onpointerdown=stop;
+   el.onclick=e=>{stop(e);h.libraryRemove(el.dataset.libremove);};});
+  $('edAssets').querySelectorAll('[data-libnew]').forEach(el=>{el.onpointerdown=stop;
+   el.onclick=e=>{stop(e);const base=el.dataset.libnew+'/새 폴더';const taken=libFolders();
+    let path=base,n=2;while(taken.has(path))path=base+' '+n++;h.libraryNewFolder(path);};});
+  // 공용 소재함 폴더 — 이름 바꾸기, 소재·폴더 받아 옮기기
+  $('edAssets').querySelectorAll('[data-libfolder]').forEach(el=>{const path=el.dataset.libfolder;
+   el.ondragstart=e=>{if(path!==ROOT)e.dataTransfer.setData('text/libfolder',path);e.stopPropagation();};
+   el.ondblclick=()=>{if(path!==ROOT)startRename(el,folderName(path),v=>h.libraryFolderRename(path,v));};
+   el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
+   el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
+   el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');
+    const lib=e.dataTransfer.getData('text/libasset'),dir=e.dataTransfer.getData('text/libfolder'),mine=e.dataTransfer.getData('text/asset');
+    if(lib)h.libraryMove(lib,path);
+    else if(dir&&dir!==path)h.libraryFolderMove(dir,path);
+    else if(mine&&!mine.startsWith(TAKE))h.shareToLibrary([mine],path);});});
   $('edAssets').querySelectorAll('[data-toggle]').forEach(el=>el.onclick=e=>{e.stopPropagation();
    const p=el.dataset.toggle;closed.has(p)?closed.delete(p):closed.add(p);renderAssets();filterAssets();});
   $('edAssets').querySelectorAll('[data-folder-remove]').forEach(el=>el.onclick=e=>{e.stopPropagation();h.removeFolder(el.dataset.folderRemove);});
@@ -146,7 +185,10 @@ export function createFreeEditor(h){
    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drop-hot');});
    el.addEventListener('dragleave',()=>el.classList.remove('drop-hot'));
    el.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drop-hot');
-    const key=e.dataTransfer.getData('text/asset');if(key)h.moveAsset(key,path);});
+    const key=e.dataTransfer.getData('text/asset'),dir=e.dataTransfer.getData('text/folder');
+    if(key&&!key.startsWith(TAKE))h.moveAsset(key,path);
+    else if(dir&&dir!==path)h.moveFolder(dir,path);});
+   el.ondragstart=e=>{if(path!==ROOT)e.dataTransfer.setData('text/folder',path);e.stopPropagation();};
    el.ondblclick=()=>{if(path===ROOT)return;const label=el.querySelector('.row-label');
     const input=document.createElement('input');input.className='row-rename';input.value=folderName(path);
     label.replaceWith(input);input.focus();input.select();

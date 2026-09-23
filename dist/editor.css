@@ -20,7 +20,7 @@ header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7p
 #edAssets .tree-folder.picked{background:#2f4a22;color:#eaf7d8}
 #edAssets .tree-row.drop-hot{background:#3b4a35;box-shadow:inset 0 0 0 1px #c6f17e}
 #edAssets .twisty{flex:none;width:14px;padding:0;background:none;border:0;color:#9aa4ae;font-size:9px;line-height:1;cursor:pointer}
-#edAssets .row-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#edAssets .row-label{flex:1;margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #edAssets .row-icon{flex:none;width:18px;text-align:center;font-style:normal;color:#9fd0ff}
 #edAssets .asset-card{padding-left:calc(6px + var(--d,0)*14px)}
 #edAssets .asset-card img{width:20px;height:20px;flex:none;object-fit:cover;border-radius:3px}
@@ -36,7 +36,12 @@ header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7p
 /* 계정 공용 소재함은 이 작업의 소재와 눈에 띄게 구분한다. */
 #edAssets .lib-row .row-label{color:#9fd0ff}
 #edAssets .lib-item{color:#cfe0ee}
-#edAssets .lib-item b{margin-left:auto;flex:none;color:#c6f17e;font-size:11px}
+#edAssets .lib-item b{flex:none;color:#c6f17e;font-size:11px}
 #edAssets .lib-item.mine b{color:#7d8791}
-#edAssets .row-share{flex:none;margin-left:auto;padding:0 5px;border-radius:4px;background:#2a323b;color:#9aa4ae;font-size:10px;font-style:normal;cursor:pointer}
+#edAssets .row-share{flex:none;padding:0 5px;border-radius:4px;background:#2a323b;color:#9aa4ae;font-size:10px;font-style:normal;cursor:pointer}
 #edAssets .row-share:hover{background:#c6f17e;color:#1b2430}
+/* 줄 위의 작은 편집 버튼들 — 평소엔 흐릿하고 줄에 손이 가면 또렷해진다. */
+#edAssets .row-act{flex:none;padding:0 5px;border-radius:4px;background:#2a323b;color:#9aa4ae;font-size:10px;font-style:normal;cursor:pointer;opacity:.45}
+#edAssets .tree-row:hover .row-act,#edAssets .tree-row:focus-within .row-act{opacity:1}
+#edAssets .row-act:hover{background:#c6f17e;color:#1b2430}
+#edAssets .lib-item b{margin-left:4px}

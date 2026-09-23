@@ -232,6 +232,40 @@ assert.deepEqual(errors,[]);
  assert.ok(read().assets.includes('media/녹음/loop.gif'),'소재 경로가 폴더 안으로 바뀐다');
  assert.ok(read().video.some(c=>(c.scene.layers||[]).some(l=>l.asset==='media/녹음/loop.gif')),'그 소재를 쓰던 블록도 따라간다');
 
+ // 파일 이름 바꾸기 — 확장자는 그대로 두고, 그 소재를 쓰던 블록도 따라간다
+ {
+  const row=$('edAssets').querySelector('[data-asset="media/녹음/loop.gif"]');
+  row.querySelector('[data-rename]').click();
+  const input=row.querySelector('.row-rename');
+  assert.ok(input,'✎ 를 누르면 이름 칸이 열린다');
+  assert.equal(input.value,'loop.gif','지금 이름이 들어 있다');
+  input.value='첫 장면';input.onblur();
+  assert.ok(read().assets.includes('media/녹음/첫 장면.gif'),'확장자는 그대로 두고 이름만 바뀐다');
+  assert.ok(read().video.some(c=>(c.scene.layers||[]).some(l=>l.asset==='media/녹음/첫 장면.gif')),'쓰던 블록도 따라간다');
+ }
+
+ // 폴더 옮기기 — 폴더를 다른 폴더 안으로 끌어다 놓는다
+ {
+  $('edNewFolder').click();
+  assert.ok(read().folders.includes('media/새 폴더'),'옮길 폴더를 하나 만든다');
+  const target=$('edAssets').querySelector('[data-folder="media/녹음"]');
+  const move=new window.Event('drop',{bubbles:true});
+  move.dataTransfer={getData:t=>t==='text/folder'?'media/새 폴더':''};
+  target.dispatchEvent(move);
+  assert.ok(read().folders.includes('media/녹음/새 폴더'),'폴더가 그 안으로 들어간다');
+  assert.ok(!read().folders.includes('media/새 폴더'),'옛 자리에는 남지 않는다');
+
+  // 자기 자신 안으로는 들어갈 수 없다
+  const inner=$('edAssets').querySelector('[data-folder="media/녹음/새 폴더"]');
+  const bad=new window.Event('drop',{bubbles:true});
+  bad.dataTransfer={getData:t=>t==='text/folder'?'media/녹음':''};
+  inner.dispatchEvent(bad);
+  assert.ok(read().folders.includes('media/녹음/새 폴더'),'자기 안으로 옮기려 하면 아무 일도 없다');
+
+  $('edAssets').querySelector('[data-folder-remove="media/녹음/새 폴더"]').click(new window.Event('click'));
+  assert.ok(!read().folders.includes('media/녹음/새 폴더'),'빈 폴더는 × 로 바로 지운다');
+ }
+
  // 폴더를 접으면 안의 소재가 사라지고, 비어 있지 않으면 지울 수 없다
  $('edAssets').querySelector('[data-toggle="media/녹음"]').click(new window.Event('click'));
  assert.deepEqual(rows(),['media','media/Record','media/녹음'],'접힌 폴더는 속을 감춘다');

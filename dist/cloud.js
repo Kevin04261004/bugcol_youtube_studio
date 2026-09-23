@@ -75,6 +75,29 @@ export function createCloudEditor(hooks){
   for(const{key,blob}of items){if(!key||!blob||library.assets[key])continue;library.assets[key]=await uploadBlob(blob);added++;}
   if(!added)return 0;
   library.folders=libraryDirs();await saveLibrary();hooks.libraryChanged?.();return added;}
+ // 공용 소재함에서도 이름을 바꾸고 폴더를 옮긴다. 바이트는 그대로 두고 경로만 바꾼다.
+ async function renameLibraryAsset(key,name){await loadLibrary();const file=library.assets[key];if(!file)return null;
+  const clean=String(name||'').replace(/[\/\\]/g,'').trim();if(!clean)return null;
+  const dir=key.split('/').slice(0,-1).join('/'),old=key.split('/').pop();
+  const ext=old.includes('.')?old.slice(old.lastIndexOf('.')):'';
+  const to=dir+'/'+(clean.includes('.')?clean:clean+ext);
+  if(to===key)return key;if(library.assets[to])throw Error('같은 이름의 소재가 이미 있습니다.');
+  library.assets[to]=file;delete library.assets[key];library.folders=libraryDirs();
+  await saveLibrary();hooks.libraryChanged?.();return to;}
+ async function moveLibraryAsset(key,folder){await loadLibrary();const file=library.assets[key];if(!file||!folder)return null;
+  const to=folder.replace(/\/+$/,'')+'/'+key.split('/').pop();
+  if(to===key)return key;if(library.assets[to])throw Error('그 폴더에 같은 이름의 소재가 있습니다.');
+  library.assets[to]=file;delete library.assets[key];library.folders=libraryDirs();
+  await saveLibrary();hooks.libraryChanged?.();return to;}
+ async function relocateLibraryFolder(from,to){await loadLibrary();
+  const path=String(to||'').replace(/\/+/g,'/').replace(/\/$/,'');
+  if(!from?.startsWith('media/')||!path.startsWith('media/')||path===from)return null;
+  if(path===from||path.startsWith(from+'/'))throw Error('폴더를 자기 안으로 옮길 수는 없습니다.');
+  if(libraryDirs().includes(path))throw Error('같은 이름의 폴더가 이미 있습니다.');
+  const swap=k=>k===from||k.startsWith(from+'/')?path+k.slice(from.length):k;
+  const next={};for(const[key,file]of Object.entries(library.assets))next[swap(key)]=file;
+  library.assets=next;library.folders=[...new Set(library.folders.map(swap))];library.folders=libraryDirs();
+  await saveLibrary();hooks.libraryChanged?.();return path;}
  async function removeFromLibrary(key){if(!user||!library.assets[key])return;
   await loadLibrary();delete library.assets[key];library.folders=libraryDirs();
   await saveLibrary();hooks.libraryChanged?.();}
@@ -118,6 +141,6 @@ export function createCloudEditor(hooks){
  window.addEventListener('beforeunload',e=>{if(saving||hooks.getProject().cloudDirty){e.preventDefault();e.returnValue='';}});
  return {edited,init,reconcile,
   library:()=>library.assets,libraryFolders:()=>library.folders,
-  libraryReady:()=>libraryLoaded,loadLibrary,addToLibrary,removeFromLibrary,addLibraryFolder,
+  libraryReady:()=>libraryLoaded,loadLibrary,addToLibrary,removeFromLibrary,addLibraryFolder,renameLibraryAsset,moveLibraryAsset,relocateLibraryFolder,
   libraryBlob:async key=>{const f=library.assets[key];if(!f)throw Error('공용 소재를 찾을 수 없습니다.');return getBlob(f);}};
 }
