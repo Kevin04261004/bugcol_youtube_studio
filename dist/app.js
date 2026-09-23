@@ -98,11 +98,18 @@ const recordKey=id=>RECORD_DIR+'/녹음 '+pad(id)+'.wav';
 function keepRecording(data,sentence){if(!data?.length||!sentence)return null;
  project.folders??=[];if(!project.folders.includes(RECORD_DIR))project.folders.push(RECORD_DIR);
  const key=recordKey(sentence.id);project.assets[key]=new Blob([wavBytes(data)],{type:'audio/wav'});return key;}
-// 예전에 녹음해 둔 작업본도 열 때 Record 폴더를 채워 준다. 이미 있는 파일은 건드리지 않는다.
+// 예전에 녹음해 둔 작업본도 Record 폴더를 채워 준다. 이미 있는 파일은 건드리지 않는다.
+// 녹음이 많으면 WAV 로 옮기는 데 시간과 메모리가 꽤 드니, 화면이 뜬 뒤 한 문장씩 천천히 한다.
+let backfillTimer=0;
 function backfillRecordings(p){if(!p||!Array.isArray(p.sentences))return p;
  p.assets??={};p.folders??=[];if(!p.folders.includes(RECORD_DIR))p.folders.unshift(RECORD_DIR);
- for(const s of p.sentences){const key=recordKey(s?.id);
-  if(s?.audio?.length&&!p.assets[key])p.assets[key]=new Blob([wavBytes(s.audio)],{type:'audio/wav'});}
+ clearTimeout(backfillTimer);
+ const queue=p.sentences.filter(s=>s?.audio?.length&&!p.assets[recordKey(s.id)]);
+ const step=()=>{if(project!==p)return;const s=queue.shift();if(!s)return;
+  try{if(s.audio?.length&&!p.assets[recordKey(s.id)]){p.assets[recordKey(s.id)]=new Blob([wavBytes(s.audio)],{type:'audio/wav'});render();scheduleSave(true);}}
+  catch(e){console.info('Record 폴더 채우기를 건너뜁니다',e);return;}
+  backfillTimer=setTimeout(step,60);};
+ if(queue.length)backfillTimer=setTimeout(step,300);
  return p;}
 function updateAudio(data){const s=current();if(!s)return;if(s.audio)undo.set(s.id,s.audio);s.audio=data;keepRecording(data,s);syncTake(s);changed();render();}
 async function startRecording(){if(recording){recorder.stop();return;}if(!current()||busy)return;stopPlayback();const s=current(),append=$('appendRecording').checked;if(s.audio&&!append&&!confirm('이 문장을 다시 녹음할까요? 기존 녹음은 실행 취소로 복원할 수 있습니다.'))return;setBusy(true);try{await audioContext();stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));recorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});const chunks=[];const input=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=2048;input.connect(analyser);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onerror=()=>{toast('녹음 중 오류가 발생했습니다. 마이크 연결을 확인하세요.');try{recorder.stop();}catch{cleanupRecord();}};recorder.onstop=async()=>{cleanupRecord();setBusy(true);try{const data=await decodeAudio(new Blob(chunks,{type:recorder.mimeType})),kept=append&&s.audio?joinAudio(s.audio,data):data;updateAudio(kept);toast('문장 '+pad(s.id)+' 녹음을 저장했습니다. · 내 소재 '+recordKey(s.id).split('/').pop()+' 로도 담았습니다.');}catch(e){toast('녹음을 처리하지 못했습니다. '+e.message);}finally{setBusy(false);}};recording=true;recordStart=performance.now();recorder.start(1000);setBusy(false);$('recordBtn').innerHTML='<span class="rec-dot"></span> 녹음 완료';$('recordBtn').classList.add('recording');$('recordBadge').classList.add('live');$('recordBadge').textContent='녹음 중';$('sentenceText').disabled=true;tickRecord();}catch(e){cleanupRecord();setBusy(false);toast(e.name==='NotAllowedError'?'브라우저에서 마이크 사용을 허용해 주세요.':'마이크를 시작할 수 없습니다. '+e.message);}}
@@ -521,7 +528,7 @@ function deleteClip(i){if(busy||recording)return;const c=project.video[i];if(!c)
  project.video.splice(i,1);clipIndex=Math.max(0,Math.min(project.video.length-1,i));
  pruneAssets();clearMedia();changed();render();toast('영상 조각을 타임라인에서 내렸습니다.');}
 let editorDrawVersion=0;
-freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,audio:()=>project.audio,sentences:()=>project.sentences,
+freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:()=>project.audio,sentences:()=>project.sentences,
  current:clip,selected:()=>clipIndex,takeOf,takeRoom,total,
  snapshot:()=>({video:project.video.map(c=>({...c,scene:structuredClone(c.scene)})),audio:project.audio.map(c=>({...c})),assets:{...project.assets},selected:clipIndex}),
  restore:v=>{stopPlayback();clearMedia();project.video=v.video;project.audio=v.audio;project.assets=v.assets;clipIndex=v.selected;changed();render();},
@@ -569,3 +576,11 @@ freeEditor=createFreeEditor({assets:()=>project.assets,video:()=>project.video,a
  prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
 });
 await loadSaved();switchTab('scenes');registerTools();cloud.init();
+// 편집기가 서지 못하면 빈 화면만 남아 무엇이 잘못됐는지 알 수 없다. 이유를 화면에 적어 둔다.
+function buildEditor(hooks){try{return createFreeEditor(hooks);}catch(e){
+ console.error('Editor failed to start',e);
+ const note=document.createElement('div');note.className='editor-broken';
+ note.innerHTML='<h2>타임라인 편집을 열지 못했습니다</h2><p>새로고침(Ctrl+Shift+R 또는 Cmd+Shift+R)으로 다시 시도해 주세요. 그래도 같다면 아래 내용을 알려 주세요.</p><pre></pre>';
+ note.querySelector('pre').textContent=String(e?.stack||e).slice(0,600);
+ document.getElementById('scenesView')?.prepend(note);
+ return null;}}

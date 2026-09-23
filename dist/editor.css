@@ -28,3 +28,8 @@ header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7p
 #edAssets .row-x{flex:none;width:16px;padding:0;background:none;border:0;color:#8a939c;font-size:12px;cursor:pointer}
 #edAssets .row-x:hover{color:#ff9b9b}
 #edAssets .row-rename{flex:1;min-width:0;padding:1px 4px;background:#12161b;border:1px solid #c6f17e;border-radius:3px;color:#eef5e2;font:inherit}
+/* 편집기가 서지 못했을 때, 빈 화면 대신 이유를 보여 준다. */
+.editor-broken{margin:16px;padding:16px;border:1px solid #6b4a4a;border-radius:10px;background:#2a1e1e;color:#f3dede}
+.editor-broken h2{margin:0 0 6px;font-size:15px}
+.editor-broken p{margin:0 0 10px;font-size:13px;color:#e0c6c6}
+.editor-broken pre{margin:0;max-height:180px;overflow:auto;white-space:pre-wrap;font-size:11px;color:#f0b3b3}
