@@ -508,7 +508,8 @@ cloud=createCloudEditor({getProject:()=>project,isBusy:()=>busy||recording,setBu
  persistLocal:()=>scheduleSave(true),updateName:name=>{$('projectName').value=name;},
  flushLocal:async()=>{scheduleSave(true);await new Promise(r=>setTimeout(r,500));await saveChain;},
  setProject:next=>{stopPlayback();clearMedia();project=adoptProject(next)||next;selected=0;clipIndex=0;undo.clear();freeEditor?.clearHistory();$('projectName').value=project.name;render();},
- newProject:()=>{stopPlayback();clearMedia();freeEditor?.clearHistory();project=emptyProject();selected=0;clipIndex=0;undo.clear();$('projectName').value=project.name;render();scheduleSave(true);}
+ newProject:()=>{stopPlayback();clearMedia();freeEditor?.clearHistory();project=emptyProject();selected=0;clipIndex=0;undo.clear();$('projectName').value=project.name;render();scheduleSave(true);},
+ libraryChanged:()=>freeEditor?.refresh()
 });
 const freeScene=()=>({...defaultScene(),layers:[],layout:'full',motion:'none'});
 // 빈 영상 조각을 트랙 맨 뒤에 붙인다.
@@ -527,6 +528,22 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
  move:(track,id,start)=>{const c=(track==='audio'?project.audio:project.video).find(x=>x.id===id);if(c)moveClip(c,start);},
  setLayerSpan:(index,id,start,end)=>setLayerSpan(project.video[index],id,start,end),
  trim:(track,id,edge,at)=>{const list=track==='audio'?project.audio:project.video,c=list.find(x=>x.id===id);if(c)trimRipple(list,c,edge,at,track==='audio'?takeRoom(c):Infinity);},
+ projectName:()=>project.name,
+ library:()=>cloud?.library()||{},libraryFolders:()=>cloud?.libraryFolders()||[],
+ // 공용 소재를 이 작업으로 가져온다. 바이트는 서버에 한 벌만 있으니 저장해도 용량이 늘지 않는다.
+ useLibrary:async key=>{if(!cloud||busy||recording)return;
+  if(project.assets[key])return toast('이미 이 작업에 있는 소재입니다.');
+  setBusy(true);
+  try{project.assets[key]=await cloud.libraryBlob(key);
+   const dir=key.split('/').slice(0,-1).join('/');
+   project.folders??=[];if(dir&&dir!=='media'&&!project.folders.includes(dir))project.folders.push(dir);
+   changed();render();toast('공용 소재함에서 가져왔습니다.');}
+  catch(e){toast('가져오지 못했습니다: '+e.message);}finally{setBusy(false);}},
+ shareToLibrary:async keys=>{if(!cloud)return;
+  try{const added=await cloud.addToLibrary(keys.map(key=>({key,blob:project.assets[key]})));
+   if(added)toast(added+'개를 계정 공용 소재함에 올렸습니다.');}
+  catch(e){toast('공용 소재함에 올리지 못했습니다: '+e.message);}},
+ dropFromLibrary:async key=>{if(!project.assets[key]&&cloud)project.assets[key]=await cloud.libraryBlob(key);},
  isAudioAsset:key=>assetType(key)==='audio',
  folders:()=>project.folders||(project.folders=[]),
  addFolder:name=>{const path=folderPath(name);if(!path)return null;project.folders??=[];

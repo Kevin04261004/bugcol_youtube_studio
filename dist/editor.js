@@ -80,11 +80,15 @@ export function createFreeEditor(h){
    document.addEventListener('pointercancel',clean);document.addEventListener('touchmove',block,{passive:false});});
  }
  // 소재함은 유니티 프로젝트 창처럼 폴더 나무로 보여 준다. 접힌 폴더는 이 화면에서만 기억한다.
- const ROOT='media',RECORD=ROOT+'/Record',TAKE='take:',closed=new Set();let pickedFolder=ROOT;
+ const ROOT='media',RECORD=ROOT+'/Record',TAKE='take:',LIB='lib',closed=new Set();let pickedFolder=ROOT;
  const takeRows=()=>h.sentences().filter(s=>s.audio?.length);
+ // 녹음은 작업 폴더 이름과 같은 칸에 모아 둔다. 공용 소재함과 섞이지 않게.
+ const safeName=n=>String(n||'작업').replace(/[\/\\]/g,' ').trim().slice(0,60)||'작업';
+ const recordDir=()=>RECORD+'/'+safeName(h.projectName());
  const folderName=p=>p===ROOT?'Assets':p.split('/').pop();
  const parentOf=p=>p.split('/').slice(0,-1).join('/');
  function allFolders(){const set=new Set([ROOT]);
+  set.add(RECORD);if(takeRows().length)for(const part of recordDir().split('/').map((_,i,a)=>a.slice(0,i+1).join('/')))if(part.startsWith(ROOT))set.add(part);
   for(const f of h.folders())if(f&&f.startsWith(ROOT+'/'))for(const part of f.split('/').map((_,i,a)=>a.slice(0,i+1).join('/')))if(part.startsWith(ROOT))set.add(part);
   for(const key of Object.keys(h.assets())){const parts=key.split('/');parts.pop();
    for(let i=1;i<=parts.length;i++){const p=parts.slice(0,i).join('/');if(p.startsWith(ROOT))set.add(p);}}
@@ -99,22 +103,40 @@ export function createFreeEditor(h){
   if(!open)return;
   for(const child of [...folders].filter(f=>parentOf(f)===folder).sort())treeRows(child,depth+1,folders,out);
   // Record 안의 줄은 문장 녹음을 그대로 비춘다. 사본 파일을 만들지 않으니 저장 용량도, 기기 사이 차이도 생기지 않는다.
-  if(folder===RECORD)for(const s of takeRows())
+  if(folder===recordDir())for(const s of takeRows())
    out.push(`<button class="tree-row asset-card" data-asset="${TAKE}${s.id}" title="${esc(s.text||'녹음')}" style="--d:${depth+1}">`
     +'<i class="row-icon">♫</i>'
     +`<span class="row-label">녹음 ${String(s.id).padStart(3,'0')} · ${esc(s.text||'')}</span></button>`);
   for(const key of Object.keys(h.assets()).filter(k=>parentOf(k)===folder).sort())
    out.push(`<button class="tree-row asset-card" data-asset="${esc(key)}" title="${esc(key)}" style="--d:${depth+1}">`
     +(/\.(png|jpe?g|webp|gif)$/i.test(key)?`<img src="${assetUrl(key)}" alt="" loading="lazy">`:`<i class="row-icon">${iconOf(key)}</i>`)
-    +`<span class="row-label">${esc(key.split('/').pop())}</span>`+(/\.gif$/i.test(key)?'<em class="gif-tag">GIF</em>':'')+'</button>');
+    +`<span class="row-label">${esc(key.split('/').pop())}</span>`+(/\.gif$/i.test(key)?'<em class="gif-tag">GIF</em>':'')
+    +`<em class="row-share" data-share="${esc(key)}" title="계정 공용 소재함에 올리기" role="button">↑</em>`+'</button>');
  }
+ function libFolders(){const set=new Set([ROOT]);
+  for(const f of h.libraryFolders())if(f?.startsWith(ROOT))for(const p of f.split('/').map((_,i,a)=>a.slice(0,i+1).join('/')))if(p.startsWith(ROOT))set.add(p);
+  for(const key of Object.keys(h.library())){const parts=key.split('/');parts.pop();
+   for(let i=1;i<=parts.length;i++)set.add(parts.slice(0,i).join('/'));}
+  return set;}
+ function libTree(folder,depth,folders,out){const open=!closed.has(LIB+folder);
+  out.push(`<div class="tree-row tree-folder lib-row${open?' open':''}" data-libfolder="${esc(folder)}" style="--d:${depth}">`
+   +`<button class="twisty" data-toggle="${esc(LIB+folder)}" aria-label="${open?'접기':'펼치기'}">${open?'▼':'▶'}</button>`
+   +`<span class="row-label">${folder===ROOT?'☁ 계정 소재함':'▣ '+esc(folderName(folder))}</span></div>`);
+  if(!open)return;
+  for(const child of [...folders].filter(f=>parentOf(f)===folder).sort())libTree(child,depth+1,folders,out);
+  for(const key of Object.keys(h.library()).filter(k=>parentOf(k)===folder).sort()){const mine=!!h.assets()[key];
+   out.push(`<button class="tree-row lib-item${mine?' mine':''}" data-lib="${esc(key)}" title="${esc(key)}${mine?' · 이미 이 작업에 있음':' · 눌러서 이 작업에 넣기'}" style="--d:${depth+1}">`
+    +`<i class="row-icon">${iconOf(key)}</i><span class="row-label">${esc(key.split('/').pop())}</span><b>${mine?'✓':'＋'}</b></button>`);}}
  function renderAssets(){const keys=Object.keys(h.assets());
   for(const[key,v]of urls)if(!h.assets()[key]){URL.revokeObjectURL(v.url);urls.delete(key);}
   $('mediaCount').textContent=keys.length;
   const folders=allFolders();
   if(!folders.has(pickedFolder))pickedFolder=ROOT;
   const rows=[];treeRows(ROOT,0,folders,rows);
+  const shared=Object.keys(h.library()).length||h.libraryFolders().length;
+  if(shared)libTree(ROOT,0,libFolders(),rows);
   $('edAssets').innerHTML=rows.join('');
+  $('edAssets').querySelectorAll('[data-lib]').forEach(el=>{el.onclick=()=>h.useLibrary(el.dataset.lib);});
   $('edAssets').querySelectorAll('[data-toggle]').forEach(el=>el.onclick=e=>{e.stopPropagation();
    const p=el.dataset.toggle;closed.has(p)?closed.delete(p):closed.add(p);renderAssets();filterAssets();});
   $('edAssets').querySelectorAll('[data-folder-remove]').forEach(el=>el.onclick=e=>{e.stopPropagation();h.removeFolder(el.dataset.folderRemove);});
@@ -131,6 +153,8 @@ export function createFreeEditor(h){
     const finish=save=>{input.onblur=null;if(save&&input.value.trim())h.renameFolder(path,parentOf(path)+'/'+input.value.trim());else renderAssets();};
     input.onblur=()=>finish(true);
     input.onkeydown=e=>{if(e.key==='Enter')finish(true);if(e.key==='Escape')finish(false);};};});
+  $('edAssets').querySelectorAll('[data-share]').forEach(el=>{el.onpointerdown=e=>e.stopPropagation();
+   el.onclick=e=>{e.stopPropagation();h.shareToLibrary([el.dataset.share]);};});
   $('edAssets').querySelectorAll('[data-asset]').forEach(el=>{const key=el.dataset.asset;
   // 끌어다 놓고 손을 뗀 직후의 click 은 같은 소재를 한 번 더 넣게 되니 흘려보낸다.
   el.onclick=()=>{if(Date.now()-touchDropAt<400)return;useAsset(key);};
@@ -200,7 +224,7 @@ export function createFreeEditor(h){
  const dropAudio=(key,at)=>{h.stop();if(key.startsWith(TAKE))h.dropTake(Number(key.slice(TAKE.length)),Math.max(0,at));else h.addAudioAsset(key,at);};
  function useAsset(key){if(isAudio(key))return dropAudio(key,projectTime());const l=layer();if(l&&!l.asset&&l.kind!=='text')return fillLayer(h.selected(),l.id,key);return addAsset(key,cursor,selectedLane);}
  async function addAsset(key,start=0,lane=null){if(isAudio(key))return dropAudio(key,offset()+Math.max(0,start));if(!h.current())h.addScene();if(layers().length>=100)return h.toast('조각당 소재는 100개까지 넣을 수 있어요.');if(!checkpoint())return;try{const el=await h.load(key),l=newLayer(key,key.split('/').pop(),el.videoWidth?'video':'image',(el.videoWidth||el.naturalWidth)/(el.videoHeight||el.naturalHeight));if(l.h>600){l.w*=600/l.h;l.h=600;}l.start=clamp(start,0,Math.max(0,span()-.05));if(!placeLayer(l,lane))return h.toast('소재 라인은 100개까지 만들 수 있어요.');active=l.id;fitMode=true;commit();}catch(e){h.toast(e.message);}}
- async function importFiles(files){if(h.isBusy())return;const good=[...files];if(!good.length)return;stop();h.setBusy(true);try{for(const f of good){if(!/\.(png|jpe?g|webp|gif|mp4|webm|mp3|wav|m4a|ogg|aac|flac)$/i.test(f.name))throw Error('PNG/JPG/WebP/GIF/MP4/WebM 또는 MP3/WAV/M4A/OGG 파일을 선택하세요.');if(f.size>1024**3)throw Error('한 파일은 1GB 이하로 가져오세요.');}stamp();const first=[];for(const f of good){const name=f.name.replace(/[^\p{L}\p{N}._ -]/gu,'_').slice(-120);const dir=pickedFolder||'media';let key=dir+'/'+name,n=2;while(h.assets()[key])key=dir+'/'+n+++'_'+name;h.assets()[key]=f;first.push(key);}h.changed();renderAssets();h.toast(`${good.length}개 소재를 가져왔어요. 빈 소재 칸으로 끌거나 눌러서 넣으세요.`);}catch(e){h.toast(e.message);}finally{h.setBusy(false);refresh();}}
+ async function importFiles(files){if(h.isBusy())return;const good=[...files];if(!good.length)return;stop();h.setBusy(true);try{for(const f of good){if(!/\.(png|jpe?g|webp|gif|mp4|webm|mp3|wav|m4a|ogg|aac|flac)$/i.test(f.name))throw Error('PNG/JPG/WebP/GIF/MP4/WebM 또는 MP3/WAV/M4A/OGG 파일을 선택하세요.');if(f.size>1024**3)throw Error('한 파일은 1GB 이하로 가져오세요.');}stamp();const first=[];for(const f of good){const name=f.name.replace(/[^\p{L}\p{N}._ -]/gu,'_').slice(-120);const dir=pickedFolder||'media';let key=dir+'/'+name,n=2;while(h.assets()[key])key=dir+'/'+n+++'_'+name;h.assets()[key]=f;first.push(key);}h.changed();renderAssets();h.toast(`${good.length}개 소재를 가져왔어요. 빈 소재 칸으로 끌거나 눌러서 넣으세요.`);h.shareToLibrary(first);}catch(e){h.toast(e.message);}finally{h.setBusy(false);refresh();}}
  function renderProps(){const l=layer();$('edLayerProps').hidden=!l;$('edSceneProps').hidden=!!l;$('edType').textContent=l?(l.asset||l.kind==='text'?{image:'이미지',video:'영상',text:'텍스트'}[l.kind]:'빈 소재 칸'):'조각';if(l){$('edName').value=l.name;for(const el of host.querySelectorAll('[data-prop]'))el.value=Math.round((el.dataset.prop==='opacity'?l.opacity*100:l[el.dataset.prop]||0)*100)/100;$('edClipField').hidden=l.kind!=='video';$('edTextFields').hidden=l.kind!=='text';$('edText').value=l.text||'';$('edFontSize').value=l.fontSize||52;$('edTextColor').value=l.color||'#ffffff';$('edMotion').value=l.motion||'none';$('edEnter').value=l.enter||.35;$('edKeys').innerHTML=(l.keyframes||[]).map((k,i)=>`<div class="key-row"><button data-key="${i}">◇ ${(k.t+(l.start||0)).toFixed(2)}초</button><select data-ease="${i}" aria-label="키프레임 속도"><option value="out" ${k.ease==='out'?'selected':''}>부드럽게 정지</option><option value="linear" ${k.ease==='linear'?'selected':''}>일정한 속도</option><option value="inout" ${k.ease==='inout'?'selected':''}>부드럽게 이동</option></select><button data-delkey="${i}" aria-label="키프레임 삭제">×</button></div>`).join('');$('edKeys').querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{stop();cursor=l.keyframes[+b.dataset.key].t+(l.start||0);fitMode=false;updateClock();paint();});$('edKeys').querySelectorAll('[data-delkey]').forEach(b=>b.onclick=()=>{stamp();l.keyframes.splice(+b.dataset.delkey,1);commit();});$('edKeys').querySelectorAll('[data-ease]').forEach(b=>b.onchange=()=>{stamp();l.keyframes[+b.dataset.ease].ease=b.value;commit();});}
  $('edLayers').innerHTML=layers().length?[...layers()].reverse().map(l=>`<div class="layer-item ${active===l.id?'selected':''}"><button data-select="${esc(l.id)}">${l.kind==='text'?'T':l.kind==='video'?'▷':'▧'} ${esc(l.name)}</button><button data-action="hidden" data-id="${esc(l.id)}" aria-label="표시 전환">${l.hidden?'○':'●'}</button><button data-action="locked" data-id="${esc(l.id)}" aria-label="잠금 전환">${l.locked?'🔒':'◇'}</button><button data-action="up" data-id="${esc(l.id)}" aria-label="앞으로">↑</button><button data-action="down" data-id="${esc(l.id)}" aria-label="뒤로">↓</button></div>`).join(''):'<p class="ed-note">소재를 추가하면 각각 이동하고 겹칠 수 있어요.</p>';$('edLayers').querySelectorAll('[data-select]').forEach(b=>b.onclick=()=>{active=b.dataset.select;if(host.dataset.pane==='layers'){host.dataset.pane='properties';host.querySelectorAll('[data-pane]').forEach(b=>b.classList.toggle('active',b.dataset.pane==='properties'));}renderProps();paint();});$('edLayers').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>{if(!checkpoint())return;const ls=layers(),i=ls.findIndex(x=>x.id===b.dataset.id),l=ls[i],a=b.dataset.action;if(a==='up'||a==='down'){const lane=l.lane+(a==='up'?1:-1);if(lane>=0&&lane<scene().materialTracks.length)moveLayerToLane(h.selected(),l.id,lane);}else if(['hidden','locked'].includes(a))l[a]=!l[a];commit();});$('edLegacy').innerHTML=scene()&&!Array.isArray(scene().layers)?'<p class="ed-note">기존 방식의 조각입니다. 직접 편집으로 바꾸면 소재를 자유롭게 배치할 수 있어요.</p><button id="edConvert">직접 편집으로 전환</button>':'';if($('edConvert'))$('edConvert').onclick=()=>{if(checkpoint())commit();};}
  // 아직 트랙에 올리지 않은 녹음만 칩으로 보여 준다.

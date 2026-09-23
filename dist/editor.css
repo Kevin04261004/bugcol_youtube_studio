@@ -33,3 +33,10 @@ header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7p
 .editor-broken h2{margin:0 0 6px;font-size:15px}
 .editor-broken p{margin:0 0 10px;font-size:13px;color:#e0c6c6}
 .editor-broken pre{margin:0;max-height:180px;overflow:auto;white-space:pre-wrap;font-size:11px;color:#f0b3b3}
+/* 계정 공용 소재함은 이 작업의 소재와 눈에 띄게 구분한다. */
+#edAssets .lib-row .row-label{color:#9fd0ff}
+#edAssets .lib-item{color:#cfe0ee}
+#edAssets .lib-item b{margin-left:auto;flex:none;color:#c6f17e;font-size:11px}
+#edAssets .lib-item.mine b{color:#7d8791}
+#edAssets .row-share{flex:none;margin-left:auto;padding:0 5px;border-radius:4px;background:#2a323b;color:#9aa4ae;font-size:10px;font-style:normal;cursor:pointer}
+#edAssets .row-share:hover{background:#c6f17e;color:#1b2430}

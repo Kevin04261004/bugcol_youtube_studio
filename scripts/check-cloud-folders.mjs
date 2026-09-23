@@ -123,6 +123,36 @@ await wait(600);
 assert.match(rows()[0].querySelector('small').textContent,/조각 \d+ · 녹음 \d+/,'예전 서버에서도 숫자를 채워 넣는다');
 legacyList=false;
 
+// 계정 공용 소재함 — 한 번 올린 그림은 다음 작업에서 다시 올리지 않는다
+{
+ const png=new window.File([new Uint8Array([1,2,3,4,5,6])],'공용.png',{type:'image/png'});
+ $('edFiles').files={length:1,0:png,[Symbol.iterator]:function*(){yield this[0];}};
+ $('edFiles').dispatchEvent(new window.Event('change',{bubbles:true}));
+ await wait(900);
+ const all=await(await window.fetch('/api/folders')).json();
+ const lib=all.folders.find(f=>f.name==='__burcol_library__');
+ assert.ok(lib,'계정에 공용 소재함 문서가 만들어진다');
+ const doc=(await(await window.fetch('/api/folders/'+lib.id)).json()).project;
+ const shared=Object.keys(doc.assets);
+ assert.ok(shared.some(k=>k.endsWith('공용.png')),'가져온 그림이 공용 소재함에 올라간다');
+ assert.deepEqual(doc.sentences,[],'공용 소재함은 작업이 아니라 소재만 담는다');
+
+ $('refreshFolders').click();await wait(500);
+ assert.ok(!names().some(n=>n.includes('__burcol_library__')),'작업 폴더 목록에는 보이지 않는다');
+
+ // 새 작업을 시작해도 계정 소재함은 그대로 있고, 눌러서 바로 가져다 쓴다
+ $('newProject').click();await wait(500);
+ assert.equal(window.document.querySelector('#edAssets [data-asset$="공용.png"]'),null,'새 작업에는 아직 그 소재가 없다');
+ const row=window.document.querySelector('#edAssets [data-lib$="공용.png"]');
+ assert.ok(row,'새 작업에서도 계정 소재함에 그 그림이 보인다');
+ row.click();await wait(700);
+ assert.ok(window.document.querySelector('#edAssets [data-asset$="공용.png"]'),'눌러서 이 작업으로 가져온다');
+
+ // 같은 그림을 또 올려도 서버에는 한 벌만 쌓인다
+ const again=(await(await window.fetch('/api/folders/'+lib.id)).json()).project;
+ assert.equal(Object.keys(again.assets).length,shared.length,'같은 소재가 공용 소재함에 두 번 쌓이지 않는다');
+}
+
 assert.deepEqual(errors,[]);
-console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project, and timeline counts on every folder row');
+console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project, timeline counts on every folder row, and an account-wide asset library');
 await window.happyDOM.abort();

@@ -35,7 +35,7 @@ export function createCloudEditor(hooks){
   status('폴더 삭제 중…');await request('/api/folders/'+f.id,{method:'DELETE'});
   const p=hooks.getProject();if(p.cloud?.id===f.id){clearTimeout(timer);p.cloud=null;p.cloudDirty=false;blocked=false;hooks.persistLocal();}
   status('폴더를 삭제했습니다.');await list();}
- async function list(append=false){if(!user)return;try{const data=await(await request('/api/folders'+(append&&cursor?'?cursor='+encodeURIComponent(cursor):''))).json();cursor=data.cursor;const canDelete=await supportsDelete();if(!append)$('folderList').replaceChildren();for(const f of data.folders.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))))$('folderList').append(folderRow(f,canDelete));if(!$('folderList').children.length)$('folderList').textContent='저장된 폴더가 없습니다. 위에서 지금 작업을 새 폴더로 저장하면 여기에 쌓입니다.';$('moreFolders').hidden=!cursor;showCurrent();}catch(e){status(e.message);hooks.toast(e.message);}}
+ async function list(append=false){if(!user)return;try{const data=await(await request('/api/folders'+(append&&cursor?'?cursor='+encodeURIComponent(cursor):''))).json();cursor=data.cursor;const canDelete=await supportsDelete();if(!append)$('folderList').replaceChildren();for(const f of data.folders.filter(f=>f.name!==LIBRARY_NAME).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))))$('folderList').append(folderRow(f,canDelete));if(!$('folderList').children.length)$('folderList').textContent='저장된 폴더가 없습니다. 위에서 지금 작업을 새 폴더로 저장하면 여기에 쌓입니다.';$('moreFolders').hidden=!cursor;showCurrent();}catch(e){status(e.message);hooks.toast(e.message);}}
  // 폴더 문서에는 소재 바이트가 아니라 참조만 들어 있어 세어 보는 값이 싸다. 동시에 너무 많이 부르지는 않는다.
  const counted=new Map();let counting=0;
  async function countTimeline(id){if(counted.has(id))return counted.get(id);
@@ -44,6 +44,43 @@ export function createCloudEditor(hooks){
   try{const {project:doc}=await(await request('/api/folders/'+id)).json();
    const n={clips:doc.video?.length||0,takes:doc.audio?.length||0};counted.set(id,n);return n;}
   catch{return null;}finally{counting--;}}
+ // 계정 공용 소재함. 이름으로 알아보는 숨은 폴더 문서라 서버를 새로 배포하지 않아도 쓸 수 있다.
+ const LIBRARY_NAME='__burcol_library__';
+ let libraryId=null,libraryEtag=null,libraryLoaded=false,library={assets:{},folders:[]};
+ async function findLibrary(){if(libraryId)return libraryId;let at=null;
+  do{const data=await(await request('/api/folders'+(at?'?cursor='+encodeURIComponent(at):''))).json();
+   const hit=data.folders.find(f=>f.name===LIBRARY_NAME);at=data.cursor;
+   if(hit){libraryId=hit.id;return libraryId;}}while(at);
+  return null;}
+ async function loadLibrary(force=false){if(!user||(libraryLoaded&&!force))return library;
+  const id=await findLibrary();libraryLoaded=true;
+  if(!id)return library;
+  const {project:doc,etag}=await(await request('/api/folders/'+id)).json();
+  libraryEtag=etag;library={assets:doc.assets||{},folders:(doc.folders||[]).filter(f=>typeof f==='string'&&f.startsWith('media/'))};
+  hooks.libraryChanged?.();return library;}
+ async function saveLibrary(retry=true){if(!user)return;
+  const doc={version:2,name:LIBRARY_NAME,captions:true,folders:library.folders.slice(0,500),sentences:[],video:[],audio:[],assets:library.assets};
+  const id=libraryId||(libraryId=crypto.randomUUID());
+  try{const res=await request('/api/folders/'+id,{method:'PUT',headers:{'Content-Type':'application/json',...(libraryEtag?{'If-Match':libraryEtag}:{'If-None-Match':'*'})},body:JSON.stringify(doc)});
+   libraryEtag=(await res.json()).etag;}
+  catch(e){if(e.status===409&&retry){const mine={...library.assets};libraryId=null;libraryEtag=null;libraryLoaded=false;
+    await loadLibrary(true);library.assets={...library.assets,...mine};return saveLibrary(false);}
+   throw e;}}
+ const libraryDirs=()=>{const dirs=new Set(library.folders);
+  for(const key of Object.keys(library.assets)){const parts=key.split('/');parts.pop();
+   for(let i=1;i<=parts.length;i++)dirs.add(parts.slice(0,i).join('/'));}
+  dirs.delete('media');return[...dirs].sort();};
+ async function addToLibrary(items){if(!user||!items?.length)return 0;
+  await loadLibrary();let added=0;
+  for(const{key,blob}of items){if(!key||!blob||library.assets[key])continue;library.assets[key]=await uploadBlob(blob);added++;}
+  if(!added)return 0;
+  library.folders=libraryDirs();await saveLibrary();hooks.libraryChanged?.();return added;}
+ async function removeFromLibrary(key){if(!user||!library.assets[key])return;
+  await loadLibrary();delete library.assets[key];library.folders=libraryDirs();
+  await saveLibrary();hooks.libraryChanged?.();}
+ async function addLibraryFolder(path){if(!user)return null;await loadLibrary();
+  if(library.folders.includes(path))return path;
+  library.folders=[...library.folders,path].sort();await saveLibrary();hooks.libraryChanged?.();return path;}
  async function getBlob(f){const chunks=[];for(const hash of f.parts)chunks.push(await(await request('/api/media/'+hash)).arrayBuffer());const blob=new Blob(chunks,{type:f.mime});if(blob.size!==f.size)throw Error('서버 소재 크기가 일치하지 않습니다.');return blob;}
  async function open(id,automatic=false,remote=null){if(saving||hooks.isBusy())return hooks.toast('현재 저장이나 녹음이 끝난 뒤 열어 주세요.');const old=hooks.getProject();if(automatic&&old.cloudDirty)return;if(old.sentences.length&&(!old.cloud||old.cloudDirty)&&!confirm('현재 기기에만 저장된 변경 사항이 있습니다. 서버 폴더를 열면 현재 화면의 작업이 바뀝니다. 계속할까요?'))return;clearTimeout(timer);hooks.setBusy(true);try{status('작업 폴더 여는 중…');const {project:doc,etag}=remote||await(await request('/api/folders/'+id)).json();
    const mine=(old.video?.length||0)+(old.audio?.length||0),theirs=(doc.video?.length||0)+(doc.audio?.length||0);
@@ -73,11 +110,14 @@ export function createCloudEditor(hooks){
   }catch(e){status(e.status===404?'서버 폴더를 찾을 수 없음 · 기기 작업 보존 중':'서버 연결 실패 · 기기 작업 보존 중, 자동 재시도');}
   finally{checking=false;}
  }
- async function init(){try{await auth();await reconcile();if(new URLSearchParams(location.search).has('folders')){$('folderDialog').showModal();await list();}}catch{status('서버 연결 대기 · 기기 작업은 유지됩니다.');}}
+ async function init(){try{await auth();loadLibrary().catch(()=>{});await reconcile();if(new URLSearchParams(location.search).has('folders')){$('folderDialog').showModal();await list();}}catch{status('서버 연결 대기 · 기기 작업은 유지됩니다.');}}
  window.addEventListener('online',reconcile);
  window.addEventListener('focus',reconcile);
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='hidden')reconcile();});
  setInterval(reconcile,15000);
  window.addEventListener('beforeunload',e=>{if(saving||hooks.getProject().cloudDirty){e.preventDefault();e.returnValue='';}});
- return {edited,init,reconcile};
+ return {edited,init,reconcile,
+  library:()=>library.assets,libraryFolders:()=>library.folders,
+  libraryReady:()=>libraryLoaded,loadLibrary,addToLibrary,removeFromLibrary,addLibraryFolder,
+  libraryBlob:async key=>{const f=library.assets[key];if(!f)throw Error('공용 소재를 찾을 수 없습니다.');return getBlob(f);}};
 }
