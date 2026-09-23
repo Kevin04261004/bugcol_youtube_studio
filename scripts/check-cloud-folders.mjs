@@ -17,13 +17,17 @@ window.document.write(fs.readFileSync('dist/index.html','utf8').replace(/<script
 window.HTMLCanvasElement.prototype.getContext=()=>new Proxy({measureText:t=>({width:t.length*12})},{get:(o,k)=>o[k]||(()=>{})});
 window.confirm=()=>true;window.structuredClone=structuredClone;window.crypto=globalThis.crypto;
 window.document.modelContext={registerTool:async()=>{}};
-let signedIn=false,legacyServer=false;
+let signedIn=false,legacyServer=false,legacyList=false;
 window.fetch=async(url,opts={})=>{
  const full=new URL(String(url),'https://editor.test');
  if(legacyServer&&full.pathname==='/api/version')return new Response(JSON.stringify({error:'요청을 찾을 수 없습니다.'}),{status:404,headers:{'Content-Type':'application/json'}});
  const auth=signedIn?{'oai-authenticated-user-id':'alice','oai-authenticated-user-email':'alice@test.local'}:{};
  let body=opts.body;if(body&&body.buffer instanceof ArrayBuffer)body=new Uint8Array(body);
- return worker.fetch(new Request(full,{method:opts.method||'GET',headers:{...auth,Origin:'https://editor.test',...(opts.headers||{})},...(body!=null?{body}:{})}),env);
+ const res=await worker.fetch(new Request(full,{method:opts.method||'GET',headers:{...auth,Origin:'https://editor.test',...(opts.headers||{})},...(body!=null?{body}:{})}),env);
+ // 예전 워커는 목록에 조각·녹음 수를 내려주지 않았다. 그때도 화면에는 숫자가 떠야 한다.
+ if(legacyList&&full.pathname==='/api/folders'&&res.status===200){const data=await res.json();
+  return new Response(JSON.stringify({...data,folders:data.folders.map(({clips,takes,...rest})=>rest)}),{status:200,headers:{'Content-Type':'application/json'}});}
+ return res;
 };
 const errors=[];window.addEventListener('error',e=>errors.push(e.message));
 const bundle=await build({entryPoints:['dist/app.js'],bundle:true,write:false,format:'esm'});
@@ -108,6 +112,17 @@ assert.deepEqual([...rows()[0].querySelectorAll('.text-btn')].map(b=>b.textConte
 legacyServer=false;$('refreshFolders').click();await wait(400);
 assert.deepEqual([...rows()[0].querySelectorAll('.text-btn')].map(b=>b.textContent),['이름 바꾸기','삭제']);
 
+// 목록에서 서버본에 타임라인이 들어 있는지 바로 보여야 한다
+$('refreshFolders').click();await wait(400);
+assert.match(rows()[0].querySelector('small').textContent,/조각 \d+ · 녹음 \d+/,'목록 줄에 조각·녹음 수가 보인다');
+
+// 서버가 그 수를 안 내려주는 예전 버전이어도, 폴더 문서를 읽어 채워 넣는다
+legacyList=true;$('refreshFolders').click();await wait(200);
+assert.match(rows()[0].querySelector('small').textContent,/타임라인 확인 중…|조각 \d+/);
+await wait(600);
+assert.match(rows()[0].querySelector('small').textContent,/조각 \d+ · 녹음 \d+/,'예전 서버에서도 숫자를 채워 넣는다');
+legacyList=false;
+
 assert.deepEqual(errors,[]);
-console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project');
+console.log('PASS folder dialog signed-out guidance, toast above modal, in-dialog status, save to new folder, open another project, rename, delete, blank project, and timeline counts on every folder row');
 await window.happyDOM.abort();
