@@ -294,13 +294,31 @@ assert.deepEqual(errors,[]);
  await new Promise(r=>setTimeout(r,400));
  const kept=read().assets.filter(k=>k.startsWith('media/Record/'));
  assert.equal(kept.length,before+1,'녹음 한 번에 파일 하나가 Record 폴더에 남는다');
- assert.match(kept.at(-1),/^media\/Record\/녹음 \d+\.wav$/,'번호를 붙인 WAV 로 담긴다');
+ assert.match(kept.at(-1),/^media\/Record\/녹음 \d+\.wav$/,'문장 번호를 붙인 WAV 로 담긴다');
  assert.ok($('edAssets').querySelector(`[data-asset="${kept.at(-1)}"]`),'소재함 나무에도 보인다');
 
- // 다시 녹음하면 덮어쓰지 않고 다음 번호로 쌓인다
+ // 같은 문장을 다시 녹음하면 그 문장의 파일을 갈아 끼운다 — 쓰레기가 쌓이지 않는다
  $('recordBtn').click();await new Promise(r=>setTimeout(r,200));
  $('recordBtn').click();await new Promise(r=>setTimeout(r,400));
- assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,before+2,'녹음마다 새 파일이 쌓인다');
+ assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,before+1,'다시 녹음해도 파일은 문장마다 하나다');
+}
+
+// 예전에 만든 작업본을 열면 그때 녹음들도 Record 폴더에 담긴다
+{
+ const zip=zipSync({'project.json':strToU8(JSON.stringify({version:2,name:'옛 작업',
+   sentences:[{id:7,text:'옛 녹음',audio:'audio/007.wav'},{id:8,text:'녹음 없음',audio:null}],video:[],audio:[]})),
+  'audio/007.wav':new Uint8Array(64)});
+ await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
+ await new Promise(r=>setTimeout(r,400));
+ const kept=read().assets.filter(k=>k.startsWith('media/Record/'));
+ assert.deepEqual([...kept],['media/Record/녹음 007.wav'],'녹음이 있는 문장만 파일로 담긴다');
+ assert.ok(read().folders.includes('media/Record'),'폴더가 없던 작업본에도 폴더가 생긴다');
+ assert.ok($('edAssets').querySelector('[data-asset="media/Record/녹음 007.wav"]'),'소재함 나무에도 보인다');
+
+ // 다시 열어도 같은 파일 하나뿐이다
+ await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
+ await new Promise(r=>setTimeout(r,400));
+ assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,1,'열 때마다 늘어나지 않는다');
 }
 
 // 상자 끝끼리 0.05초 안으로 가까워지면 딱 붙는다
