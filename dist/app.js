@@ -619,7 +619,11 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
  prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
 });
-const subtitles=createSubtitleStudio($('subsView'),{toast,setBusy});
+const subtitles=createSubtitleStudio($('subsView'),{toast,setBusy,
+ projectScript:()=>({name:project.name,
+  lines:project.sentences.map(s=>s.text).filter(t=>String(t||'').trim()),
+  timed:project.audio.map(c=>({start:c.start,end:c.start+c.duration,text:c.text||sentenceById(c.sentenceId)?.text||''}))
+   .filter(c=>c.text.trim()).sort((a,b)=>a.start-b.start)})});
 await loadSaved();switchTab('scenes');registerTools();cloud.init();
 // 편집기가 서지 못하면 빈 화면만 남아 무엇이 잘못됐는지 알 수 없다. 이유를 화면에 적어 둔다.
 function buildEditor(hooks){try{return createFreeEditor(hooks);}catch(e){

@@ -6,7 +6,7 @@ const VIDEO=/\.(mp4|webm|mov|m4v)$/i;
 // 편집은 다른 도구에서 하고 여기서는 자막만 얹는다. 영상은 이 기기에만 있고 서버로 올라가지 않는다.
 export function createSubtitleStudio(host,hooks={}){
  const $=id=>host.querySelector('#'+id);
- let cues=[],active=null,url='',name='',stamping=false;
+ let cues=[],active=null,url='',name='',stamping=false,script=[];
  host.innerHTML=`<div class="subs-grid">
   <section class="subs-stage">
    <div class="subs-pick"><button id="subOpen" class="ed-primary">＋ 영상 가져오기</button>
@@ -27,7 +27,8 @@ export function createSubtitleStudio(host,hooks={}){
   <aside class="subs-side">
    <div class="ed-heading"><h2>자막</h2><span id="subCount">0줄</span></div>
    <div class="subs-actions">
-    <button id="subScript">대본 붙여넣기</button>
+    <button id="subScript">직접 입력</button>
+    <button id="subFromProject">작업 폴더 대사</button>
     <button id="subImport">SRT 불러오기</button>
     <input id="subSrtFile" type="file" accept=".srt,.vtt,text/plain" hidden>
     <button id="subAdd">＋ 지금 위치에 추가</button>
@@ -41,9 +42,10 @@ export function createSubtitleStudio(host,hooks={}){
    </div>
   </aside>
  </div>
- <dialog id="subScriptBox"><form method="dialog"><h3>대본 붙여넣기</h3>
+ <dialog id="subScriptBox"><form method="dialog"><h3 id="subScriptTitle">직접 입력</h3>
   <p class="ed-note">한 줄이 자막 한 개가 됩니다. 시간은 영상 길이에 맞춰 고르게 나눈 뒤 다듬으세요.</p>
   <textarea id="subScriptText" rows="10" placeholder="첫 번째 자막\n두 번째 자막"></textarea>
+  <label id="subTakesRow" hidden><input type="checkbox" id="subUseTakes"> 녹음해 둔 타이밍 그대로 쓰기</label>
   <menu><button value="cancel">취소</button><button id="subScriptApply" value="apply" class="ed-primary">자막으로 만들기</button></menu>
  </form></dialog>`;
  const video=$('subVideo');
@@ -198,10 +200,31 @@ export function createSubtitleStudio(host,hooks={}){
  $('subAdd').onclick=()=>{if(cues.length>=MAX_CUES)return toast('자막은 '+MAX_CUES+'개까지 넣을 수 있어요.');
   const start=video.currentTime||0;
   cues.push({id:'c'+Date.now().toString(36),start,end:start+1.5,text:'새 자막'});commit();};
- $('subScript').onclick=()=>{$('subScriptText').value=cues.map(c=>c.text).join('\n');$('subScriptBox').showModal();};
+ // 대사는 손으로 쓰거나, 지금 열려 있는 작업 폴더에서 그대로 가져온다.
+ function openScript(title,text,takes){
+  $('subScriptTitle').textContent=title;$('subScriptText').value=text;
+  $('subTakesRow').hidden=!takes.length;$('subUseTakes').checked=!!takes.length;
+  script=takes;$('subScriptBox').showModal();
+ }
+ $('subScript').onclick=()=>openScript('직접 입력',cues.map(c=>c.text).join('\n'),[]);
+ $('subFromProject').onclick=()=>{
+  const found=hooks.projectScript?.()||{lines:[],timed:[]};
+  if(!found.lines.length&&!found.timed.length)return toast('지금 열려 있는 작업 폴더에 대사가 없습니다. 대본 & 녹음에서 먼저 작업을 열어 주세요.');
+  const lines=found.timed.length?found.timed.map(c=>c.text):found.lines;
+  openScript('작업 폴더 대사'+(found.name?' · '+found.name:''),lines.join('\n'),found.timed);
+ };
  $('subScriptApply').onclick=()=>{const lines=splitScript($('subScriptText').value);
-  if(!lines.length)return;cues=layoutCues(lines,duration());commit();
-  toast(lines.length+'줄을 만들었어요. 타이밍 찍기로 맞춰 보세요.');};
+  if(!lines.length)return;
+  // 녹음 타이밍을 쓰면 줄 순서대로 그 시각을 그대로 입는다. 줄을 고쳤어도 순서만 맞으면 된다.
+  if($('subUseTakes').checked&&script.length){
+   const tail=script.at(-1)?.end||0;
+   // 줄을 더 적었다면 녹음이 끝난 뒤로 3초씩 이어 붙인다.
+   cues=normalizeCues(lines.map((text,i)=>{const take=script[i],extra=i-script.length;
+    return take?{id:'c'+(i+1),start:take.start,end:take.end,text}
+     :{id:'c'+(i+1),start:tail+extra*3,end:tail+(extra+1)*3,text};}),duration());
+  }else cues=layoutCues(lines,duration());
+  commit();
+  toast(lines.length+'줄을 만들었어요.'+($('subUseTakes').checked&&script.length?' 녹음 타이밍을 그대로 입혔습니다 — 영상을 자르셨다면 타이밍 찍기로 다시 맞추세요.':' 타이밍 찍기로 맞춰 보세요.'));};
  $('subImport').onclick=()=>$('subSrtFile').click();
  $('subSrtFile').onchange=async e=>{const file=e.target.files[0];e.target.value='';
   if(!file)return;

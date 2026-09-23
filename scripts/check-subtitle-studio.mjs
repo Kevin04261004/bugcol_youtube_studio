@@ -65,9 +65,51 @@ assert.equal(studio.cues().at(-1).end,6);
 assert.match(studio.srt(),/^1\n00:00:00,000 --> 00:00:02,500\n가\n/);
 assert.match(studio.vtt(),/^WEBVTT/);
 
+// 작업 폴더에 녹음해 둔 대사를 그대로 가져온다
+const folder={name:'무한한 도전 1화',lines:['첫 문장','둘째 문장','셋째 문장'],timed:[]};
+const host2=window.document.body.appendChild(window.document.createElement('div'));
+const studio2=window.make(host2,{toast:m=>toasts.push(m),projectScript:()=>folder});
+const at=id=>host2.querySelector('#'+id);
+
+// 대사가 없는 작업 폴더면 알려만 준다
+folder.lines=[];folder.timed=[];
+at('subFromProject').click();
+assert.match(toasts.at(-1),/대사가 없습니다/);
+assert.equal(studio2.cues().length,0);
+
+// 대사만 있으면 줄 그대로 가져와 고르게 깐다
+folder.lines=['첫 문장','둘째 문장','셋째 문장'];
+at('subFromProject').click();
+assert.equal(at('subScriptText').value,'첫 문장\n둘째 문장\n셋째 문장','작업 폴더의 대사가 그대로 들어온다');
+assert.equal(at('subTakesRow').hidden,true,'녹음 타이밍이 없으면 그 선택지는 숨는다');
+at('subScriptApply').click();
+assert.deepEqual([...studio2.cues().map(c=>c.text)],['첫 문장','둘째 문장','셋째 문장']);
+assert.deepEqual([...studio2.cues().map(c=>[c.start,c.end])],[[0,3],[3,6],[6,9]]);
+
+// 녹음 타이밍이 있으면 그 시각을 그대로 입는다
+folder.timed=[{start:0,end:2.5,text:'첫 문장'},{start:4,end:7.25,text:'둘째 문장'},{start:9,end:12,text:'셋째 문장'}];
+at('subFromProject').click();
+assert.equal(at('subTakesRow').hidden,false,'녹음이 있으면 타이밍 쓰기를 고를 수 있다');
+assert.equal(at('subUseTakes').checked,true,'기본은 녹음 타이밍 그대로');
+at('subScriptApply').click();
+assert.deepEqual([...studio2.cues().map(c=>[c.start,c.end])],[[0,2.5],[4,7.25],[9,12]],'녹음한 시각 그대로 들어온다');
+
+// 줄을 고쳐도 순서만 맞으면 그 자리에 들어가고, 더 적은 줄은 녹음 뒤로 이어 붙는다
+at('subFromProject').click();
+at('subScriptText').value='고친 첫 줄\n둘째 문장\n셋째 문장\n덧붙인 줄';
+at('subScriptApply').click();
+assert.equal(studio2.cues()[0].text,'고친 첫 줄');
+assert.deepEqual([...studio2.cues()[0]&&studio2.cues().map(c=>[c.start,c.end])],[[0,2.5],[4,7.25],[9,12],[12,15]],'모자란 줄은 녹음이 끝난 뒤로 붙는다');
+
+// 타이밍 쓰기를 끄면 영상 길이에 맞춰 다시 고르게 깐다
+at('subFromProject').click();
+at('subUseTakes').checked=false;
+at('subScriptApply').click();
+assert.deepEqual([...studio2.cues().map(c=>[c.start,c.end])],[[0,3],[3,6],[6,9]],'끄면 고르게 나눈다');
+
 // 영상이 아닌 파일은 받지 않는다
 studio.loadVideo(new window.File([new Uint8Array(4)],'글.txt',{type:'text/plain'}));
 assert.match(toasts.at(-1),/영상을 올려 주세요/);
 
-console.log('PASS subtitle studio: script to cues, inline time and text editing, add and delete, live overlay, tap-along timing and SRT output');
+console.log('PASS subtitle studio: script to cues, inline time and text editing, add and delete, live overlay, tap-along timing, SRT output, and pulling the script of the open work folder with its recorded timings');
 await window.happyDOM.abort();
