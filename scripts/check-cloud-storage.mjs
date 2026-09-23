@@ -27,6 +27,15 @@ assert.equal((await call('/api/folders/'+id,'PUT',doc,'alice',{'If-Match':first.
 assert.equal((await call('/api/folders/'+id,'PUT',doc,'alice',{'If-None-Match':'*'})).status,409);
 assert.equal((await(await call('/api/folders')).json()).folders.length,1);
 assert.equal((await(await call('/api/folders','GET',null,'bob')).json()).folders.length,0);
+// 목록만 봐도 서버본에 타임라인이 들어 있는지 알 수 있어야 한다 — 비어 있는 채로 저장된 걸 눈치채지 못한 적이 있다.
+{const v2={version:2,name:'타임라인 있음',captions:true,sentences:[{id:1,text:'하나',audio:null}],
+  video:[{id:'v1',start:0,duration:3,scene:{background:'#ffffff'}},{id:'v2',start:3,duration:2,scene:{background:'#ffffff'}}],
+  audio:[{id:'a1',sentenceId:1,start:0,duration:1.5}],assets:{}};
+ const other=crypto.randomUUID();
+ assert.equal((await call('/api/folders/'+other,'PUT',v2,'alice',{'If-None-Match':'*'})).status,200);
+ const row=(await(await call('/api/folders')).json()).folders.find(f=>f.id===other);
+ assert.equal(row.count,1,'문장 수');assert.equal(row.clips,2,'영상 조각 수도 목록에 보인다');assert.equal(row.takes,1,'녹음 조각 수도 목록에 보인다');
+ assert.equal((await call('/api/folders/'+other,'DELETE',null,'alice')).status,200);}
 assert.equal((await call('/api/folders/'+id,'DELETE',null,'alice',{Origin:'https://evil.test'})).status,403);
 assert.equal((await call('/api/folders/'+id,'DELETE',null,'bob')).status,404);
 assert.equal((await(await call('/api/folders')).json()).folders.length,1);
@@ -39,4 +48,4 @@ assert.deepEqual(planAudioImports([{name:'002.mp3'},{name:'001.wav'}],[{id:1},{i
 assert.equal(planAudioImports([{name:'voice.m4a'}],[{id:7}],7)[0].id,7);
 assert.throws(()=>planAudioImports([{name:'001.mp3'},{name:'001.wav'}]));
 assert.throws(()=>planAudioImports([{name:'010.mp3'}],[{id:1}],1));
-console.log('PASS authenticated folder/media round-trip, user isolation, CSRF, hash verification, save conflicts, folder delete, audio filename mapping');
+console.log('PASS authenticated folder/media round-trip, user isolation, CSRF, hash verification, save conflicts, folder delete, audio filename mapping, and clip/take counts in the folder list');

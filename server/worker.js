@@ -33,7 +33,7 @@ export async function api(req,env){
  const owner=await digest(new TextEncoder().encode(uid)),prefix=`users/${owner}/`,bucket=env.BUCKET;
  if(path==='/api/folders'&&req.method==='GET'){
   const data=await bucket.list({prefix:prefix+'folders/',limit:100,cursor:u.searchParams.get('cursor')||undefined,include:['customMetadata']});
-  return json({folders:data.objects.map(o=>({id:o.key.split('/').pop().replace('.json',''),name:o.customMetadata?.name||'작업 폴더',updatedAt:o.customMetadata?.updatedAt||o.uploaded,etag:o.etag,count:Number(o.customMetadata?.count||0)})),cursor:data.truncated?data.cursor:null});
+  return json({folders:data.objects.map(o=>({id:o.key.split('/').pop().replace('.json',''),name:o.customMetadata?.name||'작업 폴더',updatedAt:o.customMetadata?.updatedAt||o.uploaded,etag:o.etag,count:Number(o.customMetadata?.count||0),clips:Number(o.customMetadata?.clips||0),takes:Number(o.customMetadata?.takes||0)})),cursor:data.truncated?data.cursor:null});
  }
  const media=path.match(/^\/api\/media\/([a-f0-9]{64})$/);
  if(media){const key=prefix+'media/'+media[1];
@@ -50,7 +50,7 @@ export async function api(req,env){
    const refs=validateManifest(doc);
    for(let i=0;i<refs.length;i+=16){const found=await Promise.all(refs.slice(i,i+16).map(p=>bucket.head(prefix+'media/'+p)));if(found.some(x=>!x))throw fail(400,'아직 업로드하지 못한 소재가 있습니다. 다시 저장하세요.');}
    const etag=req.headers.get('if-match'),create=req.headers.get('if-none-match')==='*';if(!etag&&!create)throw fail(428,'이전 저장 버전을 확인해야 합니다.');
-   doc.updatedAt=new Date().toISOString();const saved=await bucket.put(key,JSON.stringify(doc),{onlyIf:etag?{etagMatches:etag.replaceAll('"','')}:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/json'},customMetadata:{name:doc.name,updatedAt:doc.updatedAt,count:String(doc.sentences.length)}});
+   doc.updatedAt=new Date().toISOString();const saved=await bucket.put(key,JSON.stringify(doc),{onlyIf:etag?{etagMatches:etag.replaceAll('"','')}:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/json'},customMetadata:{name:doc.name,updatedAt:doc.updatedAt,count:String(doc.sentences.length),clips:String(doc.video?.length||0),takes:String(doc.audio?.length||0)}});
    if(!saved)return json({error:'다른 기기에서 이 폴더를 수정했습니다. 새 폴더로 저장하거나 서버 버전을 다시 열어 주세요.'},409);
    return json({etag:saved.etag,updatedAt:doc.updatedAt});
   }

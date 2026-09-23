@@ -64,6 +64,15 @@ assert.equal(local.video[0].scene.layers[0].asset,'media/컷/a.png');
 assert.deepEqual([...local.audio.map(c=>c.start)],[1.25],'녹음 트랙 위치도 같다');
 assert.deepEqual([...local.folders],['media/Record','media/컷'],'폴더 구조도 같다');
 
+// A server copy with no timeline must never quietly replace a device that still has one.
+remote={project:{version:2,name:'gutted',captions:true,folders:[],sentences:[],video:[],audio:[],assets:{}},etag:'empty-v1'};
+local={version:2,name:'has timeline',cloud:{id:'one',etag:'older',userId:'alice'},cloudDirty:false,sentences:[],
+ video:[{id:'v1',start:0,duration:3,scene:{}}],audio:[],assets:{}};
+await w.sync.reconcile();
+assert.equal(local.name,'has timeline','빈 타임라인으로 덮어쓰지 않는다');
+assert.equal(local.video.length,1,'조각이 그대로 남는다');
+assert.match(w.document.getElementById('syncBadge').textContent,/타임라인이 비어 있어/);
+
 // An unlinked device copy must never silently overwrite or upload an old project.
 local={name:'unlinked old copy',sentences:[],assets:{}};const before=writes;await w.sync.reconcile();assert.equal(writes,before);assert.match(w.document.getElementById('syncBadge').textContent,/이 기기에만/);
-await w.happyDOM.abort();console.log('PASS cross-device audio refresh, busy protection, conflict preservation, offline retry, conditional-write race, unlinked status, and a full timeline round trip through the server');
+await w.happyDOM.abort();console.log('PASS cross-device audio refresh, busy protection, conflict preservation, offline retry, conditional-write race, unlinked status, a full timeline round trip through the server, and a refusal to replace a live timeline with an empty server copy');
