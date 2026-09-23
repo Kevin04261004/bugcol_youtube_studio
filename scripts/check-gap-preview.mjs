@@ -202,12 +202,13 @@ assert.deepEqual(errors,[]);
 // 소재함은 유니티 프로젝트 창처럼 폴더 나무다 — 폴더를 만들고, 그 안으로 소재를 옮긴다
 {
  const rows=()=>[...$('edAssets').querySelectorAll('.tree-row')].map(r=>r.dataset.folder||r.dataset.asset);
- assert.deepEqual(rows(),['media','media/loop.gif'],'뿌리 폴더 아래에 소재가 달린다');
+ assert.deepEqual(rows(),['media','media/Record','media/loop.gif'],'뿌리 아래에 녹음 폴더와 소재가 달린다');
+ assert.ok(read().folders.includes('media/Record'),'녹음을 담을 Record 폴더가 처음부터 있다');
  assert.match($('edAssets').querySelector('[data-folder="media"] .row-label').textContent,/Assets/,'뿌리는 Assets 로 보인다');
 
  $('edNewFolder').click();
- assert.deepEqual([...read().folders],['media/새 폴더'],'폴더가 프로젝트에 남는다');
- assert.deepEqual(rows(),['media','media/새 폴더','media/loop.gif'],'만든 폴더가 나무에 보인다');
+ assert.deepEqual([...read().folders],['media/Record','media/새 폴더'],'폴더가 프로젝트에 남는다');
+ assert.deepEqual(rows(),['media','media/Record','media/새 폴더','media/loop.gif'],'만든 폴더가 나무에 보인다');
 
  // 폴더 이름 바꾸기 — 두 번 눌러 고친다
  const folderRow=$('edAssets').querySelector('[data-folder="media/새 폴더"]');
@@ -215,7 +216,7 @@ assert.deepEqual(errors,[]);
  const input=$('edAssets').querySelector('.row-rename');
  assert.ok(input,'이름 칸이 열린다');
  input.value='녹음';input.onblur();
- assert.deepEqual([...read().folders],['media/녹음'],'폴더 이름이 바뀐다');
+ assert.deepEqual([...read().folders],['media/Record','media/녹음'],'폴더 이름이 바뀐다');
 
  // 이 소재를 쓰는 블록을 하나 만들어 둔다 — 폴더를 옮겨도 블록이 따라와야 한다
  {const row=$('edTracks').querySelector('[data-lane="0"]'),d=new window.Event('drop',{bubbles:true});
@@ -233,17 +234,22 @@ assert.deepEqual(errors,[]);
 
  // 폴더를 접으면 안의 소재가 사라지고, 비어 있지 않으면 지울 수 없다
  $('edAssets').querySelector('[data-toggle="media/녹음"]').click(new window.Event('click'));
- assert.deepEqual(rows(),['media','media/녹음'],'접힌 폴더는 속을 감춘다');
+ assert.deepEqual(rows(),['media','media/Record','media/녹음'],'접힌 폴더는 속을 감춘다');
  $('edAssets').querySelector('[data-folder-remove="media/녹음"]').click(new window.Event('click'));
- assert.deepEqual([...read().folders],['media/녹음'],'소재가 든 폴더는 지워지지 않는다');
+ assert.deepEqual([...read().folders],['media/Record','media/녹음'],'소재가 든 폴더는 지워지지 않는다');
 }
 
 // 녹음 파일도 소재함으로 가져와 이미지처럼 끌어다 쓴다 — 단 언제나 녹음 줄로 간다
 {
  // happy-dom 에는 오디오 장치가 없어, 길이만 아는 최소한의 해독기를 끼워 둔다.
  const RATE=48000,seconds=2;
- window.AudioContext=class{constructor(){this.state='running';}resume(){}
-  async decodeAudioData(){return{duration:seconds,length:RATE*seconds,sampleRate:RATE};}};
+ window.AudioContext=class{constructor(){this.state='running';this.currentTime=0;}resume(){}
+  async decodeAudioData(){return{duration:seconds,length:RATE*seconds,sampleRate:RATE};}
+  createMediaStreamSource(){return{connect(){}};}
+  createAnalyser(){return{fftSize:2048,getFloatTimeDomainData(){}};}
+  createBuffer(){return{copyToChannel(){}};}
+  createBufferSource(){return{buffer:null,connect(){},start(){},stop(){},disconnect(){}};}
+  get destination(){return{};}};
  window.OfflineAudioContext=class{constructor(ch,length){this.length=length;}
   createBufferSource(){return{buffer:null,connect(){},start(){}};}get destination(){return{};}
   async startRendering(){const data=new Float32Array(this.length).fill(.25);return{getChannelData:()=>data};}};
@@ -272,6 +278,62 @@ assert.deepEqual(errors,[]);
  assert.match(read().sentences.at(-1).text,/voice/,'파일 이름이 대사가 된다');
 }
 
+// 녹음하면 내 소재의 Record 폴더에 파일로도 남는다
+{
+ window.MediaRecorder=class{static isTypeSupported(){return true;}
+  constructor(){this.mimeType='audio/webm';}
+  start(){this.ondataavailable?.({data:new window.Blob([new Uint8Array(16)])});}
+  stop(){this.onstop?.();}};
+ window.navigator.mediaDevices={getUserMedia:async()=>({getTracks:()=>[]})};
+
+ assert.ok(read().sentences.length,'녹음할 문장이 있다');
+ const before=read().assets.filter(k=>k.startsWith('media/Record/')).length;
+ $('recordBtn').click();
+ await new Promise(r=>setTimeout(r,200));
+ $('recordBtn').click();
+ await new Promise(r=>setTimeout(r,400));
+ const kept=read().assets.filter(k=>k.startsWith('media/Record/'));
+ assert.equal(kept.length,before+1,'녹음 한 번에 파일 하나가 Record 폴더에 남는다');
+ assert.match(kept.at(-1),/^media\/Record\/녹음 \d+\.wav$/,'번호를 붙인 WAV 로 담긴다');
+ assert.ok($('edAssets').querySelector(`[data-asset="${kept.at(-1)}"]`),'소재함 나무에도 보인다');
+
+ // 다시 녹음하면 덮어쓰지 않고 다음 번호로 쌓인다
+ $('recordBtn').click();await new Promise(r=>setTimeout(r,200));
+ $('recordBtn').click();await new Promise(r=>setTimeout(r,400));
+ assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,before+2,'녹음마다 새 파일이 쌓인다');
+}
+
+// 상자 끝끼리 0.05초 안으로 가까워지면 딱 붙는다
+{
+ const {timelineLayout}=await import('../dist/project-timeline.js');
+ const spans=()=>timelineLayout(read().video,read().audio).layers;
+ const barFor=id=>{const map=timelineLayout(read().video,read().audio);
+  return $('edTracks').querySelector(`[data-clip="${map.layers.findIndex(c=>c.layer.id===id)}"]`);};
+ const gesture=(target,deltas)=>{const down=new window.Event('pointerdown',{bubbles:true});Object.assign(down,{clientX:400,pointerId:9});target.dispatchEvent(down);
+  const bar=target.closest('.layer-bar');
+  for(const d of deltas){const move=new window.Event('pointermove',{bubbles:true});Object.assign(move,{clientX:400+d,pointerId:9});bar.dispatchEvent(move);}
+  const up=new window.Event('pointerup',{bubbles:true});Object.assign(up,{pointerId:9});bar.dispatchEvent(up);};
+
+ $('edNewScene').click();$('edAddText').click();$('edAddText').click();
+ const clip=read().video.at(-1),[first,second]=clip.scene.layers;
+ const fixed=()=>spans().find(c=>c.layer.id===first.id),moving=()=>spans().find(c=>c.layer.id===second.id);
+ const wall=fixed().end;
+ // 3초 + 0.03초 만큼 오른쪽으로 민다. 프레임 격자로는 딱 떨어지지 않는 자리다.
+ gesture(barFor(second.id),[Math.round((wall+.03-moving().start)*64)]);
+ assert.equal(moving().start,wall,'앞 상자의 끝에 딱 붙는다');
+ assert.ok(Math.abs(moving().end-moving().start-(fixed().end-fixed().start))<1e-9,'붙어도 길이는 그대로다');
+
+ // 0.05초보다 멀면 붙지 않고 그 자리에 선다
+ const away=moving().start;
+ gesture(barFor(second.id),[Math.round(.4*64)]);
+ assert.ok(moving().start>away+.3,'멀리 끌면 끌린 자리에 그대로 남는다');
+ assert.notEqual(moving().start,wall);
+
+ // 가장자리를 끌 때도 붙는다 — 시작 가장자리를 앞 상자 끝 가까이로
+ gesture(barFor(second.id).querySelector('[data-edge="start"]'),[Math.round((wall+.02-moving().start)*64)]);
+ assert.equal(moving().start,wall,'가장자리도 0.05초 안이면 딱 붙는다');
+}
+
 // 자막은 늘 켜져 있다 — 끄는 스위치가 없다
 {
  assert.equal(window.document.getElementById('edCaptionsAll'),null,'자막 스위치는 없앴다');
@@ -288,6 +350,6 @@ assert.deepEqual(errors,[]);
  assert.equal(read().captions,true,'꺼 둔 옛 설정이 와도 자막은 켜진다');
 }
 
-console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth, always-on captions, the Unity-style asset folder tree and audio materials that always land on the narration track');
+console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth, always-on captions, the Unity-style asset folder tree audio materials that always land on the narration track, recordings kept as WAVs in the Record folder, and 0.05s edge magnets between boxes');
 
 await window.happyDOM.abort();

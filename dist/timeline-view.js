@@ -15,16 +15,29 @@ export function createProjectTimeline(root,h){
  function timeAt(e){return clamp((e.clientX-root.getBoundingClientRect().left-RAIL)/zoom,0,Math.max(layout.total,0)+600);}
  function selected(){root.querySelectorAll('[data-clip]').forEach(el=>{const c=layout.layers[+el.dataset.clip];el.classList.toggle('selected',c.clipIndex===h.selected()&&c.layer.id===h.active());});}
  function playhead(time,follow=false){const el=root.querySelector('#edPlayhead');if(el)el.style.left=x(time)+'px';selected();if(follow){const at=x(time),left=scroll.scrollLeft;if(at>left+scroll.clientWidth-50)scroll.scrollLeft=Math.max(0,at-scroll.clientWidth*.5);else if(at<left+RAIL)scroll.scrollLeft=Math.max(0,at-150);}}
+ // 다른 상자의 끝과 0.05초 안으로 가까워지면 딱 붙인다. 손으로 맞대는 것보다 훨씬 편하다.
+ const SNAP=.05;
+ function magnets(skip){const pts=[0];
+  for(const c of layout.layers)if(c.layer!==skip)pts.push(c.start,c.end);
+  for(const t of layout.takes)if(t.clip!==skip)pts.push(t.start,t.end);
+  for(const c of layout.clips)pts.push(c.start,c.end);
+  return pts;}
+ const pull=(value,pts)=>{let best=value,near=SNAP;for(const p of pts){const d=Math.abs(p-value);if(d<near){near=d;best=p;}}return best;};
+ // 통째로 옮길 때는 양 끝 가운데 실제로 붙는 쪽, 둘 다 붙으면 더 가까운 쪽을 따른다.
+ const pullSpan=(start,length,pts)=>{const head=pull(start,pts),tail=pull(start+length,pts);
+  const near=(snapped,raw)=>snapped===raw?Infinity:Math.abs(snapped-raw);
+  const dh=near(head,start),dt=near(tail,start+length);
+  return dt<dh?tail-length:dh<Infinity?head:start;};
  // 녹음 막대를 끌어 옮기거나 가장자리로 길이를 바꾼다. 서로 붙을 필요가 없어 빈 구간과 겹침을 모두 허용한다.
  function dragTake(el,entry){
   el.onpointerdown=e=>{if(h.busy())return;const edge=e.target.dataset.edge;
    // 고르는 순간 트랙을 다시 그리면 끌고 있던 막대가 사라지므로, 먼저 끌기 상태로 잠근다.
    dragging=true;h.stop();
    e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}
-   const origin=e.clientX,start=entry.clip.start,span=entry.clip.duration,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
+   const origin=e.clientX,start=entry.clip.start,span=entry.clip.duration,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame,pts=magnets(entry.clip);
    const move=ev=>{const delta=(ev.clientX-origin)/zoom;
-    if(edge)h.trim('audio',entry.clip.id,edge,snap(edge==='start'?start+delta:start+span+delta));
-    else h.move('audio',entry.clip.id,Math.max(0,snap(start+delta)));
+    if(edge)h.trim('audio',entry.clip.id,edge,pull(snap(edge==='start'?start+delta:start+span+delta),pts));
+    else h.move('audio',entry.clip.id,Math.max(0,pullSpan(snap(start+delta),span,pts)));
     el.style.left=x(entry.clip.start)+'px';el.style.width=Math.max(4,entry.clip.duration*zoom)+'px';};
    const done=()=>{dragging=false;el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);h.commit();};
    el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);};
@@ -115,11 +128,12 @@ export function createProjectTimeline(root,h){
     // 갓 넣은 영상은 아직 레이어가 아니라 끌 수 없다. 처음 끌 때 레이어로 바꿔 주고 그대로 이어서 끈다.
     if(l.legacy){const live=h.convertLayer(c.clipIndex);if(!live){dragging=false;return;}l=live;h.selectLayer(c.clipIndex,l.id,c.start);}
     e.preventDefault();h.stamp();try{el.setPointerCapture?.(e.pointerId);}catch{}let targetLane=c.lane;const originTop=el.parentElement.getBoundingClientRect().top;const origin=e.clientX,edge=e.target.dataset.edge,a=c.start,b=c.end;
+    const pts=magnets(l);
     const move=ev=>{const delta=(ev.clientX-origin)/zoom,frame=1/h.fps(),snap=t=>Math.round(t/frame)*frame;
      let start=a,end=b;
-     if(edge==='start')start=clamp(a+snap(delta),0,b-frame);
-     else if(edge==='end')end=Math.max(a+frame,b+snap(delta));
-     else{start=Math.max(0,a+snap(delta));end=start+(b-a);}
+     if(edge==='start')start=clamp(pull(a+snap(delta),pts),0,b-frame);
+     else if(edge==='end')end=Math.max(a+frame,pull(b+snap(delta),pts));
+     else{start=Math.max(0,pullSpan(a+snap(delta),b-a,pts));end=start+(b-a);}
      h.setLayerSpan(c.clipIndex,l.id,start,end);
      if(!edge){const row=[...root.querySelectorAll('[data-lane]')].find(row=>{const r=row.getBoundingClientRect();return ev.clientY>=r.top&&ev.clientY<r.bottom;});
       if(row){targetLane=+row.dataset.lane;el.style.transform='translateY('+(row.getBoundingClientRect().top-originTop)+'px)';el.style.zIndex='5';}}
