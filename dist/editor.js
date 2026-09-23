@@ -112,7 +112,8 @@ export function createFreeEditor(h){
     +(/\.(png|jpe?g|webp|gif)$/i.test(key)?`<img src="${assetUrl(key)}" alt="" loading="lazy">`:`<i class="row-icon">${iconOf(key)}</i>`)
     +`<span class="row-label">${esc(key.split('/').pop())}</span>`+(/\.gif$/i.test(key)?'<em class="gif-tag">GIF</em>':'')
     +rowButton('rename',key,'✎','이름 바꾸기')
-    +`<em class="row-share" data-share="${esc(key)}" title="계정 공용 소재함에 올리기" role="button">↑</em>`+'</button>');
+    +`<em class="row-share" data-share="${esc(key)}" title="계정 공용 소재함에 올리기" role="button">↑</em>`
+    +rowButton('delete',key,'×','소재 지우기')+'</button>');
  }
  // 줄 위에서 바로 이름을 고친다. 소재 줄은 누르면 타임라인에 들어가니 ✎ 로만 연다.
  function startRename(row,current,commit){const label=row.querySelector('.row-label');if(!label)return;
@@ -160,6 +161,8 @@ export function createFreeEditor(h){
    el.onclick=e=>{stop(e);const key=el.dataset.rename;startRename(el.closest('.tree-row'),key.split('/').pop(),v=>h.renameAsset(key,v));};});
   $('edAssets').querySelectorAll('[data-librename]').forEach(el=>{el.onpointerdown=stop;
    el.onclick=e=>{stop(e);const key=el.dataset.librename;startRename(el.closest('.tree-row'),key.split('/').pop(),v=>h.libraryRename(key,v));};});
+  $('edAssets').querySelectorAll('[data-delete]').forEach(el=>{el.onpointerdown=stop;
+   el.onclick=e=>{stop(e);h.deleteAsset(el.dataset.delete);};});
   $('edAssets').querySelectorAll('[data-libremove]').forEach(el=>{el.onpointerdown=stop;
    el.onclick=e=>{stop(e);h.libraryRemove(el.dataset.libremove);};});
   $('edAssets').querySelectorAll('[data-libnew]').forEach(el=>{el.onpointerdown=stop;

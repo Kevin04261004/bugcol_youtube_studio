@@ -269,8 +269,34 @@ assert.deepEqual(errors,[]);
  // 폴더를 접으면 안의 소재가 사라지고, 비어 있지 않으면 지울 수 없다
  $('edAssets').querySelector('[data-toggle="media/녹음"]').click(new window.Event('click'));
  assert.deepEqual(rows(),['media','media/Record','media/녹음'],'접힌 폴더는 속을 감춘다');
+ // 소재 하나만 지우기 — 쓰던 블록은 빈 칸으로 남고 조각은 그대로다
+ {
+  $('edAssets').querySelector('[data-toggle="media/녹음"]').click(new window.Event('click')); // 접어 둔 폴더를 다시 편다
+  const key=read().assets.find(k=>k.startsWith('media/녹음/'));
+  const spans=()=>JSON.stringify(read().video.map(c=>[c.start,c.duration]));const before=spans();
+  const using=read().video.flatMap(c=>c.scene.layers||[]).filter(l=>l.asset===key).length;
+  assert.ok(using,'그 소재를 쓰는 블록이 있다');
+  $('edAssets').querySelector(`[data-delete="${key}"]`).click(new window.Event('click'));
+  assert.ok(!read().assets.includes(key),'소재가 사라진다');
+  assert.ok(read().video.flatMap(c=>c.scene.layers||[]).every(l=>l.asset!==key),'쓰던 자리는 비워진다');
+  assert.equal(read().video.flatMap(c=>c.scene.layers||[]).length>0,true,'블록 자체는 남는다');
+  assert.equal(spans(),before,'조각 위치와 길이는 그대로다');
+  // 지운 소재를 다시 쓰라고 들고 있지 않는다
+  assert.equal($('edAssets').querySelector(`[data-asset="${key}"]`),null,'소재함에서도 사라진다');
+ }
+
+ // 고른 폴더로 소재를 하나 더 가져온다 — 폴더째 지우기를 보려면 안에 뭔가 있어야 한다
+ $('edAssets').querySelector('[data-folder="media/녹음"]').click();
+ $('edFiles').files={length:1,0:new window.File([clip3],'다시.gif',{type:'image/gif'}),[Symbol.iterator]:function*(){yield this[0];}};
+ $('edFiles').dispatchEvent(new window.Event('change',{bubbles:true}));
+ await new Promise(r=>setTimeout(r,300));
+ assert.ok(read().assets.includes('media/녹음/다시.gif'),'고른 폴더에 담긴다');
+
+ // 소재가 든 폴더는 한 번 물어본 뒤 안의 것까지 함께 지운다
  $('edAssets').querySelector('[data-folder-remove="media/녹음"]').click(new window.Event('click'));
- assert.deepEqual([...read().folders],['media/Record','media/녹음'],'소재가 든 폴더는 지워지지 않는다');
+ assert.deepEqual([...read().folders],['media/Record'],'폴더가 사라진다');
+ assert.ok(!read().assets.some(k=>k.startsWith('media/녹음/')),'안에 있던 소재도 함께 사라진다');
+ assert.ok(read().video.every(c=>(c.scene.layers||[]).every(l=>!String(l.asset).startsWith('media/녹음/'))),'그 소재를 쓰던 블록도 함께 사라진다');
 }
 
 // 녹음 파일도 소재함으로 가져와 이미지처럼 끌어다 쓴다 — 단 언제나 녹음 줄로 간다

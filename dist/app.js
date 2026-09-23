@@ -68,6 +68,13 @@ function rekeyAsset(from,to){if(!project.assets[from]||project.assets[to])return
  project.assets[to]=project.assets[from];delete project.assets[from];
  for(const c of project.video){if(c.scene.asset===from)c.scene.asset=to;
   for(const l of c.scene.layers||[])if(l.asset===from)l.asset=to;}}
+function usesOfAsset(key){let n=0;
+ for(const c of project.video){if(c.scene.asset===key)n++;
+  for(const l of c.scene.layers||[])if(l.asset===key)n++;}
+ return n;}
+function forgetAsset(key){for(const c of project.video){if(c.scene.asset===key)delete c.scene.asset;
+  if(Array.isArray(c.scene.layers))c.scene.layers=c.scene.layers.filter(l=>l.asset!==key);}
+ delete project.assets[key];}
 function relocateFolder(from,to){const path=folderPath(to);if(!path||path===from||!from?.startsWith('media/'))return null;
  if(folderTaken(path))return toast('같은 이름의 폴더가 이미 있습니다.'),null;
  const swap=k=>k===from||k.startsWith(from+'/')?path+k.slice(from.length):k;
@@ -574,10 +581,20 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
   if(to===key)return key;
   if(project.assets[to])return toast('같은 이름의 소재가 이미 있습니다.'),null;
   rekeyAsset(key,to);clearMedia();changed();render();return to;},
- removeFolder:path=>{if(!path?.startsWith('media/'))return;
-  if(Object.keys(project.assets).some(k=>k.startsWith(path+'/'))||(project.folders||[]).some(f=>f.startsWith(path+'/')))
-   return toast('폴더를 비운 뒤에 지울 수 있습니다.');
-  project.folders=(project.folders||[]).filter(f=>f!==path);changed();render();},
+ removeFolder:path=>{if(!path?.startsWith('media/')||busy||recording)return;
+  const inside=Object.keys(project.assets).filter(k=>k.startsWith(path+'/'));
+  const subs=(project.folders||[]).filter(f=>f.startsWith(path+'/'));
+  if(inside.length||subs.length){
+   const used=inside.reduce((n,k)=>n+usesOfAsset(k),0);
+   if(!confirm(`‘${path.split('/').pop()}’ 안의 소재 ${inside.length}개와 폴더 ${subs.length}개를 함께 지웁니다.`+(used?` 이 소재를 쓰던 블록 ${used}개도 타임라인에서 사라집니다.`:'')+' 계속할까요?'))return;
+   for(const key of inside)forgetAsset(key);}
+  project.folders=(project.folders||[]).filter(f=>f!==path&&!f.startsWith(path+'/'));
+  clearMedia();changed();render();toast('폴더를 지웠습니다.');},
+ // 소재 지우기 — 쓰던 블록은 빈 칸으로 남겨, 배치와 길이는 그대로 둔다.
+ deleteAsset:key=>{if(!project.assets[key]||busy||recording)return;
+  const name=key.split('/').pop(),used=usesOfAsset(key);
+  if(!confirm(used?`‘${name}’을(를) 쓰던 블록 ${used}개도 타임라인에서 함께 사라집니다. 지울까요?`:`‘${name}’을(를) 소재함에서 지울까요?`))return;
+  forgetAsset(key);pruneAssets();clearMedia();changed();render();toast('소재를 지웠습니다.');},
  moveAsset:(key,folder)=>{if(!project.assets[key]||!folder)return;
   const to=folder.replace(/\/+$/,'')+'/'+key.split('/').pop();
   if(to===key)return;if(project.assets[to])return toast('그 폴더에 같은 이름의 소재가 있습니다.');
