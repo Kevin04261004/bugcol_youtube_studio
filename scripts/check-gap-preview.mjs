@@ -278,7 +278,7 @@ assert.deepEqual(errors,[]);
  assert.match(read().sentences.at(-1).text,/voice/,'파일 이름이 대사가 된다');
 }
 
-// 녹음하면 내 소재의 Record 폴더에 파일로도 남는다
+// 녹음하면 내 소재의 Record 폴더에 바로 보이고, 거기서 끌어다 쓸 수 있다
 {
  window.MediaRecorder=class{static isTypeSupported(){return true;}
   constructor(){this.mimeType='audio/webm';}
@@ -287,38 +287,41 @@ assert.deepEqual(errors,[]);
  window.navigator.mediaDevices={getUserMedia:async()=>({getTracks:()=>[]})};
 
  assert.ok(read().sentences.length,'녹음할 문장이 있다');
- const before=read().assets.filter(k=>k.startsWith('media/Record/')).length;
+ const assetsBefore=read().assets.length;
  $('recordBtn').click();
  await new Promise(r=>setTimeout(r,200));
  $('recordBtn').click();
  await new Promise(r=>setTimeout(r,400));
- const kept=read().assets.filter(k=>k.startsWith('media/Record/'));
- assert.equal(kept.length,before+1,'녹음 한 번에 파일 하나가 Record 폴더에 남는다');
- assert.match(kept.at(-1),/^media\/Record\/녹음 \d+\.wav$/,'문장 번호를 붙인 WAV 로 담긴다');
- assert.ok($('edAssets').querySelector(`[data-asset="${kept.at(-1)}"]`),'소재함 나무에도 보인다');
+ const recorded=read().sentences.find(x=>x.durationSeconds>0);
+ assert.ok(recorded,'문장에 녹음이 담긴다');
+ const row=$('edAssets').querySelector(`[data-asset="take:${recorded.id}"]`);
+ assert.ok(row,'Record 폴더에 그 녹음이 보인다');
+ assert.match(row.textContent,/녹음 \d+/);
+ assert.equal(read().assets.length,assetsBefore,'사본 파일을 따로 만들지는 않는다 — 기기마다 달라지지 않게');
+ assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,0);
 
- // 같은 문장을 다시 녹음하면 그 문장의 파일을 갈아 끼운다 — 쓰레기가 쌓이지 않는다
- $('recordBtn').click();await new Promise(r=>setTimeout(r,200));
- $('recordBtn').click();await new Promise(r=>setTimeout(r,400));
- assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,before+1,'다시 녹음해도 파일은 문장마다 하나다');
+ // Record 줄을 타임라인에 끌어다 놓으면 그 녹음이 그 자리에 올라간다
+ const takesBefore=read().audio.length;
+ const lane=$('edTracks').querySelector('[data-lane="0"]'),drop=new window.Event('drop',{bubbles:true});
+ Object.assign(drop,{clientX:500,clientY:100,dataTransfer:{getData:t=>t==='text/asset'?`take:${recorded.id}`:''}});
+ lane.dispatchEvent(drop);
+ await new Promise(r=>setTimeout(r,300));
+ assert.equal(read().audio.length,takesBefore+1,'녹음 줄에 한 조각이 더 올라간다');
+ assert.equal(read().audio.at(-1).sentenceId,recorded.id,'그 문장의 녹음이 올라간다');
+ assert.ok(read().audio.at(-1).start>0,'놓은 자리에서 시작한다');
 }
 
-// 예전에 만든 작업본을 열면 그때 녹음들도 Record 폴더에 담긴다
+// 예전에 만든 작업본을 열면 그때 녹음도 Record 폴더에 보이고, 예전 버전이 만든 사본은 정리된다
 {
  const zip=zipSync({'project.json':strToU8(JSON.stringify({version:2,name:'옛 작업',
    sentences:[{id:7,text:'옛 녹음',audio:'audio/007.wav'},{id:8,text:'녹음 없음',audio:null}],video:[],audio:[]})),
-  'audio/007.wav':new Uint8Array(64)});
+  'audio/007.wav':new Uint8Array(64),'media/Record/녹음 007.wav':new Uint8Array(64)});
  await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
  await new Promise(r=>setTimeout(r,400));
- const kept=read().assets.filter(k=>k.startsWith('media/Record/'));
- assert.deepEqual([...kept],['media/Record/녹음 007.wav'],'녹음이 있는 문장만 파일로 담긴다');
  assert.ok(read().folders.includes('media/Record'),'폴더가 없던 작업본에도 폴더가 생긴다');
- assert.ok($('edAssets').querySelector('[data-asset="media/Record/녹음 007.wav"]'),'소재함 나무에도 보인다');
-
- // 다시 열어도 같은 파일 하나뿐이다
- await $('projectInput').onchange({target:{files:[{arrayBuffer:async()=>zip.buffer}],value:''}});
- await new Promise(r=>setTimeout(r,400));
- assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,1,'열 때마다 늘어나지 않는다');
+ assert.ok($('edAssets').querySelector('[data-asset="take:7"]'),'옛 녹음이 Record 폴더에 보인다');
+ assert.equal($('edAssets').querySelector('[data-asset="take:8"]'),null,'녹음 없는 문장은 보이지 않는다');
+ assert.equal(read().assets.filter(k=>k.startsWith('media/Record/')).length,0,'예전 버전이 만든 WAV 사본은 걷어낸다');
 }
 
 // 상자 끝끼리 0.05초 안으로 가까워지면 딱 붙는다
@@ -368,6 +371,6 @@ assert.deepEqual(errors,[]);
  assert.equal(read().captions,true,'꺼 둔 옛 설정이 와도 자막은 켜진다');
 }
 
-console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth, always-on captions, the Unity-style asset folder tree audio materials that always land on the narration track, recordings kept as WAVs in the Record folder, and 0.05s edge magnets between boxes');
+console.log('PASS preview gaps, GIF import, persistent empty material rows, row rename/removal, cross-row block drag, undo/redo, deletion and reload, clip growth, always-on captions, the Unity-style asset folder tree audio materials that always land on the narration track, recordings mirrored in the Record folder without duplicate files, and 0.05s edge magnets between boxes');
 
 await window.happyDOM.abort();

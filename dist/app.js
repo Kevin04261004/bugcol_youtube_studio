@@ -48,7 +48,7 @@ function adoptProject(saved){if(!saved||!Array.isArray(saved.sentences))return n
  if(!next.folders.includes(RECORD_DIR))next.folders.unshift(RECORD_DIR);
  for(const c of next.video)freshBackground(c.scene);
  for(const s of next.sentences)delete s.scene;
- return backfillRecordings(next);}
+ return dropRecordCopies(next);}
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 const fileName=()=>project.name.replace(/[\\/:*?"<>|]/g,'_')||'burcol';
 function renderStats(){const list=project.sentences,clips=project.video,placed=project.audio;$('completedCount').textContent=String(list.filter(s=>s.audio?.length).length).padStart(2,'0');$('totalCount').textContent=String(list.length).padStart(2,'0');$('scriptCount').textContent=list.length;$('totalDuration').textContent='총 '+time(total());
@@ -93,26 +93,15 @@ function switchTab(next){if(recording||busy)return;stopPlayback();tab=next;docum
 function replaceScript(text){const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);if(!lines.length)throw Error('대본에 문장이 없습니다.');if(lines.length>2000)throw Error('한 프로젝트는 2,000문장까지 지원합니다.');if(project.sentences.length&&!confirm('현재 대본과 녹음이 교체됩니다. 프로젝트 ZIP으로 백업하셨나요?'))return;stopPlayback();clearMedia();project.sentences=lines.map((s,i)=>newSentence(s,i+1));project.video=[];project.audio=[];freeEditor?.clearHistory();project.assets={};selected=0;clipIndex=0;undo.clear();changed();render();toast(lines.length+'개의 문장으로 나누었습니다. 녹음하면 타임라인에 차례로 올라갑니다.');}
 async function decodeAudio(blob){const context=await audioContext();const b=await context.decodeAudioData(await blob.arrayBuffer());if(b.duration>600)throw Error('한 문장 녹음은 10분 이내로 나누어 주세요.');const off=new OfflineAudioContext(1,Math.ceil(b.duration*RATE),RATE),src=off.createBufferSource();src.buffer=b;src.connect(off.destination);src.start();return(await off.startRendering()).getChannelData(0).slice();}
 // 녹음이 끝나면 WAV 한 벌을 Record 폴더에 남긴다. 소재함에서 다시 끌어다 쓸 수 있다.
-// 파일 이름은 문장 번호를 따른다. 다시 녹음하면 그 문장의 파일을 그대로 갈아 끼운다.
+// Record 폴더는 문장 녹음을 그대로 비추기만 한다(소재함 쪽에서 그린다).
+// 예전 버전이 만들어 둔 WAV 사본은 열 때 정리한다. 기기마다 사본이 생기면 서버 저장이 서로 어긋난다.
 const recordKey=id=>RECORD_DIR+'/녹음 '+pad(id)+'.wav';
-function keepRecording(data,sentence){if(!data?.length||!sentence)return null;
- project.folders??=[];if(!project.folders.includes(RECORD_DIR))project.folders.push(RECORD_DIR);
- const key=recordKey(sentence.id);project.assets[key]=new Blob([wavBytes(data)],{type:'audio/wav'});return key;}
-// 예전에 녹음해 둔 작업본도 Record 폴더를 채워 준다. 이미 있는 파일은 건드리지 않는다.
-// 녹음이 많으면 WAV 로 옮기는 데 시간과 메모리가 꽤 드니, 화면이 뜬 뒤 한 문장씩 천천히 한다.
-let backfillTimer=0;
-function backfillRecordings(p){if(!p||!Array.isArray(p.sentences))return p;
- p.assets??={};p.folders??=[];if(!p.folders.includes(RECORD_DIR))p.folders.unshift(RECORD_DIR);
- clearTimeout(backfillTimer);
- const queue=p.sentences.filter(s=>s?.audio?.length&&!p.assets[recordKey(s.id)]);
- const step=()=>{if(project!==p)return;const s=queue.shift();if(!s)return;
-  try{if(s.audio?.length&&!p.assets[recordKey(s.id)]){p.assets[recordKey(s.id)]=new Blob([wavBytes(s.audio)],{type:'audio/wav'});render();scheduleSave(true);}}
-  catch(e){console.info('Record 폴더 채우기를 건너뜁니다',e);return;}
-  backfillTimer=setTimeout(step,60);};
- if(queue.length)backfillTimer=setTimeout(step,300);
+function dropRecordCopies(p){if(!p||!Array.isArray(p.sentences)||!p.assets)return p;
+ p.folders??=[];if(!p.folders.includes(RECORD_DIR))p.folders.unshift(RECORD_DIR);
+ for(const s of p.sentences)if(s?.audio?.length)delete p.assets[recordKey(s.id)];
  return p;}
-function updateAudio(data){const s=current();if(!s)return;if(s.audio)undo.set(s.id,s.audio);s.audio=data;keepRecording(data,s);syncTake(s);changed();render();}
-async function startRecording(){if(recording){recorder.stop();return;}if(!current()||busy)return;stopPlayback();const s=current(),append=$('appendRecording').checked;if(s.audio&&!append&&!confirm('이 문장을 다시 녹음할까요? 기존 녹음은 실행 취소로 복원할 수 있습니다.'))return;setBusy(true);try{await audioContext();stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));recorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});const chunks=[];const input=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=2048;input.connect(analyser);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onerror=()=>{toast('녹음 중 오류가 발생했습니다. 마이크 연결을 확인하세요.');try{recorder.stop();}catch{cleanupRecord();}};recorder.onstop=async()=>{cleanupRecord();setBusy(true);try{const data=await decodeAudio(new Blob(chunks,{type:recorder.mimeType})),kept=append&&s.audio?joinAudio(s.audio,data):data;updateAudio(kept);toast('문장 '+pad(s.id)+' 녹음을 저장했습니다. · 내 소재 '+recordKey(s.id).split('/').pop()+' 로도 담았습니다.');}catch(e){toast('녹음을 처리하지 못했습니다. '+e.message);}finally{setBusy(false);}};recording=true;recordStart=performance.now();recorder.start(1000);setBusy(false);$('recordBtn').innerHTML='<span class="rec-dot"></span> 녹음 완료';$('recordBtn').classList.add('recording');$('recordBadge').classList.add('live');$('recordBadge').textContent='녹음 중';$('sentenceText').disabled=true;tickRecord();}catch(e){cleanupRecord();setBusy(false);toast(e.name==='NotAllowedError'?'브라우저에서 마이크 사용을 허용해 주세요.':'마이크를 시작할 수 없습니다. '+e.message);}}
+function updateAudio(data){const s=current();if(!s)return;if(s.audio)undo.set(s.id,s.audio);s.audio=data;syncTake(s);changed();render();}
+async function startRecording(){if(recording){recorder.stop();return;}if(!current()||busy)return;stopPlayback();const s=current(),append=$('appendRecording').checked;if(s.audio&&!append&&!confirm('이 문장을 다시 녹음할까요? 기존 녹음은 실행 취소로 복원할 수 있습니다.'))return;setBusy(true);try{await audioContext();stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));recorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});const chunks=[];const input=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=2048;input.connect(analyser);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onerror=()=>{toast('녹음 중 오류가 발생했습니다. 마이크 연결을 확인하세요.');try{recorder.stop();}catch{cleanupRecord();}};recorder.onstop=async()=>{cleanupRecord();setBusy(true);try{const data=await decodeAudio(new Blob(chunks,{type:recorder.mimeType})),kept=append&&s.audio?joinAudio(s.audio,data):data;updateAudio(kept);toast('문장 '+pad(s.id)+' 녹음을 저장했습니다. 내 소재 Record 폴더에서 끌어다 쓸 수 있어요.');}catch(e){toast('녹음을 처리하지 못했습니다. '+e.message);}finally{setBusy(false);}};recording=true;recordStart=performance.now();recorder.start(1000);setBusy(false);$('recordBtn').innerHTML='<span class="rec-dot"></span> 녹음 완료';$('recordBtn').classList.add('recording');$('recordBadge').classList.add('live');$('recordBadge').textContent='녹음 중';$('sentenceText').disabled=true;tickRecord();}catch(e){cleanupRecord();setBusy(false);toast(e.name==='NotAllowedError'?'브라우저에서 마이크 사용을 허용해 주세요.':'마이크를 시작할 수 없습니다. '+e.message);}}
 function cleanupRecord(){recording=false;cancelAnimationFrame(recFrame);stream?.getTracks().forEach(t=>t.stop());stream=null;$('recordBtn').innerHTML='<span class="rec-dot"></span> 녹음 시작';$('recordBtn').classList.remove('recording');$('recordBadge').classList.remove('live');$('sentenceText').disabled=!current();}
 function tickRecord(){if(!recording)return;const elapsed=(performance.now()-recordStart)/1000;$('recordClock').textContent=time(elapsed,true);const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);drawWave(data);if(elapsed>=600){recorder.stop();toast('10분 녹음이 완료되었습니다.');return;}recFrame=requestAnimationFrame(tickRecord);}
 function drawWave(live){const canvas=$('waveform'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,data=live||current()?.audio;g.clearRect(0,0,w,h);g.fillStyle='#faf9fd';g.fillRect(0,0,w,h);const d=duration(current()),start=+$('cutStart').value,end=+$('cutEnd').value;if(!live&&d&&end>start){g.fillStyle='#eee6ff';g.fillRect(start/d*w,0,(end-start)/d*w,h);}const count=200;for(let i=0;i<count;i++){let peak=0;if(data?.length){const a=Math.floor(i/count*data.length),b=Math.max(a+1,Math.floor((i+1)/count*data.length)),stride=Math.max(1,Math.floor((b-a)/80));for(let j=a;j<b;j+=stride)peak=Math.max(peak,Math.abs(data[j]||0));}g.fillStyle=data?'#9570e8':'#d9d1e8';const bh=Math.max(4,peak*h*.9);g.fillRect(i*w/count+1,(h-bh)/2,3,bh);}if(!live&&d){g.fillStyle='#7852df';for(const t of[start,end])g.fillRect(t/d*w-1,0,2,h);}}
@@ -265,7 +254,7 @@ async function restoreProject(file){if(busy||recording)return;if((project.senten
   next.video=m.video.map((c,i)=>newVideoClip(checkScene(c.scene,i+1,files,next.assets),c.start,c.duration,typeof c.id==='string'?c.id:undefined));
   next.audio=m.audio.filter(c=>ids.has(Number(c.sentenceId))).map(c=>newAudioClip(Number(c.sentenceId),c.start,c.duration,String(c.text||''),typeof c.id==='string'?c.id:undefined,c.offset));}
  for(const[name,bytes]of Object.entries(files))if((name.startsWith('clips/')||name.startsWith('media/'))&&assetType(name)&&!next.assets[name])next.assets[name]=new Blob([bytes],{type:blobType(name)});
- backfillRecordings(next);
+ dropRecordCopies(next);
  stopPlayback();clearMedia();project=next;selected=0;clipIndex=0;undo.clear();freeEditor?.clearHistory();$('projectName').value=project.name;scheduleSave();render();toast('프로젝트를 복원했습니다.');}catch(e){toast('프로젝트 복원 실패: '+e.message);}finally{setBusy(false);}}
 async function seekVideo(video,t){const target=Math.max(0,Math.min(t,Math.max(0,video.duration-.035)));if(Math.abs(video.currentTime-target)<.0005&&video.readyState>=2)return;await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{clean();reject(Error('영상 프레임을 읽을 수 없습니다. 소재를 MP4 H.264로 변환해 주세요.'));},10000);const clean=()=>{clearTimeout(timeout);video.removeEventListener('seeked',done);video.removeEventListener('error',fail);};const done=()=>{clean();resolve();},fail=()=>{clean();reject(Error('영상 소재 오류'));};video.addEventListener('seeked',done);video.addEventListener('error',fail);video.currentTime=target;});}
 async function renderCompatibleVideo(want=''){
@@ -509,7 +498,7 @@ async function importAudioFiles(files){
  if(plan.some(p=>project.sentences.find(s=>s.id===p.id)?.audio)&&!confirm('같은 번호의 기존 녹음을 가져온 파일로 교체할까요?'))return;
  const decoded=[];for(let i=0;i<plan.length;i++){toast(`음성 가져오는 중 ${i+1} / ${plan.length}`);decoded.push({...plan[i],audio:await decodeAudio(plan[i].file)});}
  if(!project.sentences.length){project.sentences=decoded.map(p=>newSentence(p.text,p.id)).sort((a,b)=>a.id-b.id);selected=0;}
- for(const p of decoded){const s=project.sentences.find(s=>s.id===p.id);if(s.audio)undo.set(s.id,s.audio);s.audio=p.audio;keepRecording(p.audio,s);syncTake(s);}
+ for(const p of decoded){const s=project.sentences.find(s=>s.id===p.id);if(s.audio)undo.set(s.id,s.audio);s.audio=p.audio;syncTake(s);}
  changed();render();toast(decoded.length+'개 음성을 녹음 트랙에 올렸습니다.');
  }catch(e){toast('음성 가져오기 실패: '+e.message);}finally{setBusy(false);}
 }
