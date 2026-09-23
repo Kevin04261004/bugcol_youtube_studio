@@ -1,4 +1,5 @@
 import {createFreeEditor} from './editor.js';
+import {createSubtitleStudio} from './subtitle-view.js';
 import {drawLayers,layerVideoTime,setLayerSpan} from './editor-engine.js';
 import {getFrameRate} from './fps.js';
 import {createGifWriter,decodeGif,gifFrameAt} from './gif.js';
@@ -102,7 +103,7 @@ function placeTake(s,at=null){if(!s?.audio?.length)return null;const c=newAudioC
 function syncTake(s){const placed=project.audio.filter(c=>c.sentenceId===s.id);if(!placed.length)return placeTake(s);
  for(const c of placed){c.text=s.text;c.offset=0;c.duration=duration(s);}
  return placed[0];}
-function switchTab(next){if(recording||busy)return;stopPlayback();tab=next;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===next));for(const name of['record','scenes','export'])$(name+'View').hidden=name!==next;$('pageTitle').textContent={record:'좋은 이야기는, 한 문장부터.',scenes:'목소리에 장면을 입히세요.',export:'당신의 이야기를 세상으로.'}[next];$('pageSubtitle').textContent={record:'대본을 올리고, 한 문장씩 편안하게 녹음하세요.',scenes:'녹음 길이에 맞춰 장면을 연결하고, 흐름을 확인하세요.',export:'마지막 검수를 마치고, 한 편의 롱폼을 완성하세요.'}[next];renderStats();drawPreview();}
+function switchTab(next){if(recording||busy)return;stopPlayback();tab=next;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===next));for(const name of['record','scenes','subs','export'])$(name+'View').hidden=name!==next;$('pageTitle').textContent={record:'좋은 이야기는, 한 문장부터.',scenes:'목소리에 장면을 입히세요.',subs:'영상에 자막만 얹어요.',export:'당신의 이야기를 세상으로.'}[next];$('pageSubtitle').textContent={record:'대본을 올리고, 한 문장씩 편안하게 녹음하세요.',scenes:'녹음 길이에 맞춰 장면을 연결하고, 흐름을 확인하세요.',subs:'다 만든 영상을 올리고 자막을 맞춘 뒤, SRT 로 받거나 구워 내세요.',export:'마지막 검수를 마치고, 한 편의 롱폼을 완성하세요.'}[next];renderStats();drawPreview();}
 function replaceScript(text){const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);if(!lines.length)throw Error('대본에 문장이 없습니다.');if(lines.length>2000)throw Error('한 프로젝트는 2,000문장까지 지원합니다.');if(project.sentences.length&&!confirm('현재 대본과 녹음이 교체됩니다. 프로젝트 ZIP으로 백업하셨나요?'))return;stopPlayback();clearMedia();project.sentences=lines.map((s,i)=>newSentence(s,i+1));project.video=[];project.audio=[];freeEditor?.clearHistory();project.assets={};selected=0;clipIndex=0;undo.clear();changed();render();toast(lines.length+'개의 문장으로 나누었습니다. 녹음하면 타임라인에 차례로 올라갑니다.');}
 async function decodeAudio(blob){const context=await audioContext();const b=await context.decodeAudioData(await blob.arrayBuffer());if(b.duration>600)throw Error('한 문장 녹음은 10분 이내로 나누어 주세요.');const off=new OfflineAudioContext(1,Math.ceil(b.duration*RATE),RATE),src=off.createBufferSource();src.buffer=b;src.connect(off.destination);src.start();return(await off.startRendering()).getChannelData(0).slice();}
 // 녹음이 끝나면 WAV 한 벌을 Record 폴더에 남긴다. 소재함에서 다시 끌어다 쓸 수 있다.
@@ -618,6 +619,7 @@ freeEditor=buildEditor({assets:()=>project.assets,video:()=>project.video,audio:
  recordTab:()=>switchTab('record'),script:()=>$('pasteBtn').click(),legacyImport:()=>$('importScenes').click(),cutVideo:()=>$('cutVideoBtn').click(),fullPlay:previewAll,
  prepare:async()=>{await audioContext();const shot=shotAt(clipStart(clipIndex));if(shot)await prepareLayers(shot);},visible:()=>tab==='scenes'
 });
+const subtitles=createSubtitleStudio($('subsView'),{toast,setBusy});
 await loadSaved();switchTab('scenes');registerTools();cloud.init();
 // 편집기가 서지 못하면 빈 화면만 남아 무엇이 잘못됐는지 알 수 없다. 이유를 화면에 적어 둔다.
 function buildEditor(hooks){try{return createFreeEditor(hooks);}catch(e){

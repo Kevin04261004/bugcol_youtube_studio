@@ -13,7 +13,7 @@
   },
   "type": "module",
   "scripts": {
-    "test": "node scripts/build-worker.mjs && node scripts/check-interactions.mjs && node scripts/check-audio-timeline.mjs && node scripts/check-cloud-storage.mjs && node scripts/check-scene-motion.mjs && node scripts/check-cloud-folders.mjs && node scripts/check-live-source.mjs && node scripts/check-editor-engine.mjs && node scripts/check-free-editor.mjs && node scripts/check-project-timeline.mjs && node scripts/check-cloud-sync.mjs && node scripts/check-track-timeline.mjs && node scripts/check-gap-preview.mjs && node scripts/check-gif.mjs",
+    "test": "node scripts/build-worker.mjs && node scripts/check-interactions.mjs && node scripts/check-audio-timeline.mjs && node scripts/check-cloud-storage.mjs && node scripts/check-scene-motion.mjs && node scripts/check-cloud-folders.mjs && node scripts/check-live-source.mjs && node scripts/check-editor-engine.mjs && node scripts/check-free-editor.mjs && node scripts/check-project-timeline.mjs && node scripts/check-cloud-sync.mjs && node scripts/check-track-timeline.mjs && node scripts/check-gap-preview.mjs && node scripts/check-gif.mjs && node scripts/check-subtitles.mjs && node scripts/check-subtitle-studio.mjs",
     "build": "node scripts/build-worker.mjs",
     "dev": "vite"
   }

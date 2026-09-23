@@ -45,3 +45,30 @@ header #projectName{background:#292e35;border:1px solid #3a4048;border-radius:7p
 #edAssets .tree-row:hover .row-act,#edAssets .tree-row:focus-within .row-act{opacity:1}
 #edAssets .row-act:hover{background:#c6f17e;color:#1b2430}
 #edAssets .lib-item b{margin-left:4px}
+/* 영상에 자막만 얹는 화면 */
+.subs-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.subs-stage{background:#1d2024;border:1px solid #34383f;border-radius:12px;padding:14px;min-width:0}
+.subs-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.subs-pick #subName{font-size:12px;color:#969da6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#subScreen{position:relative;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+#subVideo{width:100%;height:100%;object-fit:contain;background:#000}
+#subOverlay{position:absolute;left:5%;right:5%;bottom:6%;margin:0;padding:8px 12px;border-radius:6px;background:#000000a0;color:#fff;font-size:clamp(13px,2.2vw,22px);font-weight:700;line-height:1.35;text-align:center;white-space:pre-wrap;pointer-events:none}
+#subEmpty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8f9ba8;font-size:13px;pointer-events:none}
+.subs-transport{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.subs-transport #subScrub{flex:1;min-width:160px}
+.subs-transport #subClock{font-size:12px;color:#bec8d2;font-variant-numeric:tabular-nums}
+.subs-stamp{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.subs-stamp small{font-size:11px;color:#969da6}
+.subs-side{background:#1d2024;border:1px solid #34383f;border-radius:12px;padding:14px;min-width:0}
+.subs-actions,.subs-out{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.subs-out{margin:12px 0 0}
+.subs-list{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.cue-row{display:grid;grid-template-columns:18px 58px 58px minmax(0,1fr) auto auto auto;gap:4px;align-items:center;padding:3px;border-radius:6px}
+.cue-row.playing{background:#2f4a22}
+.cue-row.picked{outline:1px solid #c6f17e}
+.cue-row b{font-size:10px;color:#8f9ba8;text-align:right}
+.cue-row input{min-width:0;padding:3px 5px;background:#12161b;border:1px solid #3b444e;border-radius:4px;color:#e4ecf5;font:inherit;font-size:11px}
+.cue-row button{padding:2px 5px;background:#2a323b;border:1px solid #3b444e;border-radius:4px;color:#bec8d2;font-size:10px;cursor:pointer}
+.cue-row button:hover{background:#c6f17e;color:#1b2430}
+#subScriptBox textarea{width:100%;box-sizing:border-box}
+@media(max-width:900px){.subs-grid{grid-template-columns:minmax(0,1fr)}}
